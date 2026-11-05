@@ -1113,4 +1113,47 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+
+  // ==================== DONATE QR MODAL ====================
+  const donateModal = document.getElementById('donateModal');
+  const openDonateModalBtn = document.getElementById('openDonateModalBtn');
+  const openDonateBannerBtn = document.getElementById('openDonateBannerBtn');
+  const openDonateFooterBtn = document.getElementById('openDonateFooterBtn');
+  const closeDonateModalBtn = document.getElementById('closeDonateModalBtn');
+  const closeDonateModalBtn2 = document.getElementById('closeDonateModalBtn2');
+
+  function openDonateModal() {
+    if (donateModal) {
+      donateModal.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
+  }
+
+  function closeDonateModal() {
+    if (donateModal) {
+      donateModal.classList.add('hidden');
+      document.body.style.overflow = '';
+    }
+  }
+
+  if (openDonateModalBtn) openDonateModalBtn.addEventListener('click', openDonateModal);
+  if (openDonateBannerBtn) openDonateBannerBtn.addEventListener('click', openDonateModal);
+  if (openDonateFooterBtn) openDonateFooterBtn.addEventListener('click', openDonateModal);
+
+  if (closeDonateModalBtn) closeDonateModalBtn.addEventListener('click', closeDonateModal);
+  if (closeDonateModalBtn2) closeDonateModalBtn2.addEventListener('click', closeDonateModal);
+
+  if (donateModal) {
+    donateModal.addEventListener('click', (e) => {
+      if (e.target === donateModal) {
+        closeDonateModal();
+      }
+    });
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && donateModal && !donateModal.classList.contains('hidden')) {
+      closeDonateModal();
+    }
+  });
 });

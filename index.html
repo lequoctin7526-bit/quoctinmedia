@@ -32,16 +32,10 @@
         </div>
       </div>
       <div class="header-badges">
-        <span class="badge badge-yt"><i class="fa-brands fa-youtube"></i> YouTube 4K</span>
-        <span class="badge badge-tiktok"><i class="fa-brands fa-tiktok"></i> TikTok No-Logo</span>
-        <span class="badge badge-sp"><i class="fa-brands fa-spotify"></i> Spotify 320k</span>
-        <span class="badge badge-sc"><i class="fa-brands fa-soundcloud"></i> SoundCloud HQ</span>
-        <span class="badge badge-zing"><i class="fa-solid fa-compact-disc"></i> Zing MP3 320k</span>
-        <span class="badge badge-nct"><i class="fa-solid fa-cloud-arrow-down"></i> NhacCuaTui HD</span>
-        <!-- <button id="cookieSettingsBtn" class="cookie-nav-btn" type="button" title="Quản lý Cookie YouTube">
-          <i class="fa-solid fa-cookie-bite"></i> <span>Cookie YouTube</span>
-          <span id="cookieBadgeDot" class="cookie-badge-dot"></span>
-        </button> -->
+        <button id="openDonateModalBtn" class="donate-nav-btn" type="button" title="Ủng hộ tác giả qua mã QR">
+          <i class="fa-solid fa-heart donate-heart-pulse"></i>
+          <span>Ủng hộ / Donate</span>
+        </button>
       </div>
     </header>
 
@@ -417,20 +411,78 @@
           </div>
         </div>
       </section>
+
+      <!-- Donate Banner Section -->
+      <section class="donate-banner-card">
+        <div class="donate-banner-content">
+          <div class="donate-banner-text">
+            <div class="donate-pill-tag"><i class="fa-solid fa-heart"></i> Ủng hộ dự án</div>
+            <h3>Ủng hộ Quốc Tín Media Pro</h3>
+            <p>Trang web hoàn toàn miễn phí, tải chất lượng cao không giới hạn. Bạn có thể ủng hộ ly cà phê qua mã QR để giúp mình duy trì máy chủ!</p>
+          </div>
+          <button type="button" class="btn-donate-trigger" id="openDonateBannerBtn">
+            <i class="fa-solid fa-qrcode"></i>
+            <span>Mở Mã QR Donate</span>
+          </button>
+        </div>
+      </section>
     </main>
 
     <!-- Footer -->
     <footer class="app-footer">
       <p>Quốc Tín Media Pro &bull; Công cụ tải nhạc & video cá nhân &bull; Hỗ trợ YouTube, TikTok, Spotify, SoundCloud, Zing MP3 & NhacCuaTui</p>
-      <a href="https://www.facebook.com/quctinne" target="_blank" rel="noopener noreferrer" class="footer-fb-link">
-        <i class="fa-brands fa-facebook"></i>
-        <span>Facebook: Quốc Tín (quctinne)</span>
-      </a>
+      <div class="footer-links-row">
+        <a href="https://www.facebook.com/quctinne" target="_blank" rel="noopener noreferrer" class="footer-fb-link">
+          <i class="fa-brands fa-facebook"></i>
+          <span>Facebook: Quốc Tín (quctinne)</span>
+        </a>
+        <button id="openDonateFooterBtn" class="footer-donate-btn" type="button" title="Ủng hộ tác giả ly cà phê">
+          <i class="fa-solid fa-mug-hot"></i>
+          <span>Ủng hộ (Donate QR)</span>
+        </button>
+      </div>
       <div class="backend-status" id="backendStatus">
         <span class="status-dot online"></span>
         <span id="serverStatusText">Máy chủ: Hoạt động</span>
       </div>
     </footer>
+  </div>
+
+  <!-- Donate QR Modal -->
+  <div id="donateModal" class="modal-backdrop hidden">
+    <div class="modal-card donate-modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <div class="donate-icon-badge">
+            <i class="fa-solid fa-heart"></i>
+          </div>
+          <div>
+            <h3>Ủng Hộ / Donate Tác Giả</h3>
+            <p>Cảm ơn bạn đã đồng hành & ủng hộ Quốc Tín Media Pro</p>
+          </div>
+        </div>
+        <button id="closeDonateModalBtn" class="modal-close-btn" type="button">&times;</button>
+      </div>
+      <div class="modal-body donate-modal-body">
+        <div class="donate-qr-wrapper">
+          <a href="img/qr.jpg" target="_blank" title="Nhấp để xem ảnh lớn">
+            <img src="img/qr.jpg" alt="Mã QR Donate Quốc Tín" class="donate-qr-image" id="donateQrImage" />
+          </a>
+          <div class="donate-scan-badge">
+            <i class="fa-solid fa-qrcode"></i> Quét mã qua App Ngân Hàng / MoMo
+          </div>
+        </div>
+        <div class="donate-note-box">
+          <p><i class="fa-solid fa-circle-info"></i> Mỗi lượt ủng hộ của bạn là động lực to lớn giúp mình duy trì máy chủ tải nhạc tốc độ cao 24/7 và nâng cấp thêm nhiều tính năng mới!</p>
+        </div>
+      </div>
+      <div class="modal-footer donate-modal-footer">
+        <a href="img/qr.jpg" download="QR_Donate_QuocTinMedia.jpg" class="btn-download-qr">
+          <i class="fa-solid fa-download"></i> Tải ảnh mã QR
+        </a>
+        <button id="closeDonateModalBtn2" class="btn-close-modal" type="button">Đóng</button>
+      </div>
+    </div>
   </div>
 
   <!-- Cookie Settings Modal -->
