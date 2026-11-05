@@ -163,8 +163,8 @@ def get_youtube_extractor_args(clients=None):
         }
     }
 
-def apply_youtube_opts(opts, is_youtube=True, clients=None):
-    """Injects anti-bot extractor args, timeouts, and cookies into yt-dlp options."""
+def apply_youtube_opts(opts, is_youtube=True, clients=None, with_cookies=True):
+    """Injects anti-bot extractor args, timeouts, and optional cookies into yt-dlp options."""
     if not opts:
         opts = {}
     if is_youtube:
@@ -175,16 +175,19 @@ def apply_youtube_opts(opts, is_youtube=True, clients=None):
         opts["retries"] = opts.get("retries", 10)
         opts["fragment_retries"] = opts.get("fragment_retries", 10)
     
-    cookie_p = get_cookie_file()
-    if cookie_p and "cookiefile" not in opts:
-        opts["cookiefile"] = cookie_p
+    if with_cookies:
+        cookie_p = get_cookie_file()
+        if cookie_p and "cookiefile" not in opts:
+            opts["cookiefile"] = cookie_p
+    else:
+        opts.pop("cookiefile", None)
     return opts
 
 def extract_info_safe(base_opts, url, download=False):
     """
     Safely extract info with intelligent multi-strategy fallback for YouTube bot blocks:
-    With cookies: web, android, android_vr, mweb
-    Without cookies: android + android_vr, android, mweb, web_music, web_embedded
+    Prioritizes anonymous mobile clients (android, android_vr) first (bypasses bot restrictions on datacenter IPs),
+    then falls back to cookie and web strategies.
     Always applies ignore_no_formats_error during info extraction.
     """
     is_yt = any(d in url.lower() for d in ["youtube.com", "youtu.be"])
@@ -193,28 +196,20 @@ def extract_info_safe(base_opts, url, download=False):
         with yt_dlp.YoutubeDL(opts) as ydl:
             return ydl.extract_info(url, download=download)
 
-    cookie_p = get_cookie_file()
-    if cookie_p:
-        strategies = [
-            ["web", "android"],
-            ["android", "android_vr"],
-            ["android"],
-            ["mweb"],
-            ["web_embedded", "android"]
-        ]
-    else:
-        strategies = [
-            ["android", "android_vr"],
-            ["android"],
-            ["mweb"],
-            ["web_music"],
-            ["web_embedded", "android"],
-            ["web"]
-        ]
+    strategies = [
+        {"clients": ["android", "android_vr"], "use_cookie": False},
+        {"clients": ["android"], "use_cookie": False},
+        {"clients": ["android"], "use_cookie": True},
+        {"clients": ["mweb"], "use_cookie": False},
+        {"clients": ["web_music"], "use_cookie": False},
+        {"clients": ["web_embedded", "android"], "use_cookie": False},
+        {"clients": ["web", "android"], "use_cookie": True},
+        {"clients": ["web"], "use_cookie": False}
+    ]
 
     last_error = None
-    for clients in strategies:
-        opts = apply_youtube_opts(dict(base_opts), is_youtube=True, clients=clients)
+    for strat in strategies:
+        opts = apply_youtube_opts(dict(base_opts), is_youtube=True, clients=strat["clients"], with_cookies=strat["use_cookie"])
         if not download:
             opts["ignore_no_formats_error"] = True
         try:
@@ -225,13 +220,13 @@ def extract_info_safe(base_opts, url, download=False):
         except Exception as e:
             last_error = e
             err_msg = str(e).lower()
-            # Only abort early if it's genuinely private or removed, NEVER on embedding, SABR, or bot restrictions
-            if ("private video" in err_msg or "has been removed" in err_msg) and "152" not in err_msg and "watch video on youtube" not in err_msg and "format is not available" not in err_msg:
+            # Only abort early if it's genuinely private or removed
+            if ("private video" in err_msg or "has been removed" in err_msg) and "152" not in err_msg and "watch video on youtube" not in err_msg and "format is not available" not in err_msg and "not a bot" not in err_msg and "sign in" not in err_msg:
                 raise e
 
     if last_error:
         raise last_error
-    raise Exception("Không thể trích xuất dữ liệu từ YouTube.")
+    raise Exception("Không thể trích xuất dữ liệu từ YouTube sau khi thử tất cả các kênh dự phòng.")
 
 def sanitize_filename(filename):
     return re.sub(r'[\\/*?:"<>|]', "", filename).strip()
@@ -1162,8 +1157,17 @@ def index():
 @app.route("/api/health")
 def health():
     cookie_p = get_cookie_file()
+    has_node = False
+    try:
+        node_res = subprocess.run(["node", "-v"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=2)
+        has_node = node_res.returncode == 0
+    except Exception:
+        has_node = False
+
     return jsonify({
         "status": "online",
+        "commit": "v2.6.0-robust",
+        "has_node": has_node,
         "ffmpeg": bool(FFMPEG_EXE),
         "ffmpeg_path": FFMPEG_EXE,
         "ytdlp_version": yt_dlp.version.__version__,
@@ -2959,18 +2963,20 @@ def download_worker(job_id, payload):
                 }]
 
             download_strategies = [
-                ["android", "android_vr"],
-                ["android"],
-                ["mweb"],
-                ["web_music"],
-                ["web", "android"]
+                {"clients": ["android", "android_vr"], "use_cookie": False},
+                {"clients": ["android"], "use_cookie": False},
+                {"clients": ["android"], "use_cookie": True},
+                {"clients": ["mweb"], "use_cookie": False},
+                {"clients": ["web_music"], "use_cookie": False},
+                {"clients": ["tv_embedded"], "use_cookie": False},
+                {"clients": ["web", "android"], "use_cookie": True},
             ]
 
             download_success = False
             last_dl_err = None
-            for client_strat in download_strategies:
+            for strat in download_strategies:
                 current_opts = dict(ydl_opts)
-                current_opts = apply_youtube_opts(current_opts, is_youtube=True, clients=client_strat)
+                current_opts = apply_youtube_opts(current_opts, is_youtube=True, clients=strat["clients"], with_cookies=strat["use_cookie"])
                 if mode == "audio":
                     current_opts["format"] = "bestaudio/best/18/b"
                 else:
@@ -2982,7 +2988,7 @@ def download_worker(job_id, payload):
                     break
                 except Exception as dl_err:
                     last_dl_err = dl_err
-                    print(f"[*] YouTube download strategy {client_strat} failed: {dl_err}. Thử kênh dự phòng tiếp theo...")
+                    print(f"[*] YouTube download strategy {strat} failed: {dl_err}. Thử kênh dự phòng tiếp theo...")
 
             if not download_success:
                 if last_dl_err:
