@@ -1234,4 +1234,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     requestAnimationFrame(animateIntro);
   }
+
+  // ==================== AUTHOR NOTICE BADGE ====================
+  const authorNoticeBadge = document.getElementById('authorNoticeBadge');
+  const closeAuthorNoticeBtn = document.getElementById('closeAuthorNoticeBtn');
+
+  if (authorNoticeBadge && closeAuthorNoticeBtn) {
+    closeAuthorNoticeBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      authorNoticeBadge.classList.add('dismissed');
+      setTimeout(() => {
+        authorNoticeBadge.style.display = 'none';
+      }, 350);
+    });
+  }
 });
