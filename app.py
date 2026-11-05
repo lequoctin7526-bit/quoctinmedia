@@ -155,8 +155,7 @@ def get_youtube_extractor_args(clients=None):
     and Error 152 ('Watch video on YouTube' embedding blocks).
     """
     if not clients:
-        has_cookies = get_cookie_file() is not None
-        clients = ["web", "android"] if has_cookies else ["android", "android_vr", "mweb"]
+        clients = ["android", "android_vr", "web", "mweb"]
     return {
         "youtube": {
             "player_client": clients,
@@ -2959,21 +2958,36 @@ def download_worker(job_id, payload):
                     "add_metadata": True
                 }]
 
-            try:
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([url])
-            except Exception as dl_err:
-                err_msg = str(dl_err).lower()
-                if "not a bot" in err_msg or "sign in" in err_msg or "format is not available" in err_msg or "152" in err_msg or "watch video on youtube" in err_msg or "unavailable" in err_msg:
-                    print(f"[*] Retrying YouTube download with alternative mobile clients...")
-                    retry_opts = dict(ydl_opts)
-                    retry_opts = apply_youtube_opts(retry_opts, is_youtube=True, clients=["android", "android_vr"])
-                    if mode == "audio":
-                        retry_opts["format"] = "bestaudio/best/18/b"
-                    with yt_dlp.YoutubeDL(retry_opts) as ydl_retry:
-                        ydl_retry.download([url])
+            download_strategies = [
+                ["android", "android_vr"],
+                ["android"],
+                ["mweb"],
+                ["web_music"],
+                ["web", "android"]
+            ]
+
+            download_success = False
+            last_dl_err = None
+            for client_strat in download_strategies:
+                current_opts = dict(ydl_opts)
+                current_opts = apply_youtube_opts(current_opts, is_youtube=True, clients=client_strat)
+                if mode == "audio":
+                    current_opts["format"] = "bestaudio/best/18/b"
                 else:
-                    raise dl_err
+                    current_opts["format"] = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best/18/b"
+                try:
+                    with yt_dlp.YoutubeDL(current_opts) as ydl_inst:
+                        ydl_inst.download([url])
+                    download_success = True
+                    break
+                except Exception as dl_err:
+                    last_dl_err = dl_err
+                    print(f"[*] YouTube download strategy {client_strat} failed: {dl_err}. Thử kênh dự phòng tiếp theo...")
+
+            if not download_success:
+                if last_dl_err:
+                    raise last_dl_err
+                raise Exception("Không thể tải video từ YouTube sau khi thử tất cả các kênh dự phòng.")
 
             files = [f for f in os.listdir(job_folder) if not f.endswith(('.temp', '.part', '.ytdl'))]
             if not files:
