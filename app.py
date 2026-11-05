@@ -2913,7 +2913,7 @@ def download_worker(job_id, payload):
                     ydl.download([url])
             except Exception as dl_err:
                 err_msg = str(dl_err).lower()
-                if "not a bot" in err_msg or "sign in" in err_msg or "format is not available" in err_msg:
+                if "not a bot" in err_msg or "sign in" in err_msg or "format is not available" in err_msg or "152" in err_msg or "watch video on youtube" in err_msg or "unavailable" in err_msg:
                     print(f"[*] Retrying YouTube download with alternative mobile clients...")
                     retry_opts = dict(ydl_opts)
                     retry_opts = apply_youtube_opts(retry_opts, is_youtube=True, clients=["android", "ios"])
