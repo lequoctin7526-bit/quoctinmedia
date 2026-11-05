@@ -21,9 +21,9 @@ import threading
 import subprocess
 import io
 from PIL import Image
-from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse, quote
 import requests
-from flask import Flask, request, jsonify, send_file, send_from_directory, make_response
+from flask import Flask, request, jsonify, send_file, send_from_directory, make_response, Response, stream_with_context
 from werkzeug.utils import secure_filename
 import yt_dlp
 import mutagen
@@ -767,6 +767,7 @@ def get_spotify_track_info(track_id):
                 duration_sec = entity.get('duration', 0) / 1000.0
                 rel_date = entity.get('releaseDate', {}).get('isoString', '') or ''
                 year = rel_date[:4] if rel_date else ''
+                audio_preview = entity.get('audioPreview', {}).get('url') or ''
 
                 return {
                     'title': title,
@@ -775,7 +776,8 @@ def get_spotify_track_info(track_id):
                     'album': album,
                     'cover': cover,
                     'duration': duration_sec,
-                    'year': year
+                    'year': year,
+                    'audio_preview_url': audio_preview
                 }
     except Exception as e:
         print(f"[!] Error scraping Spotify embed: {e}")
@@ -1183,6 +1185,162 @@ def delete_cookies():
                 pass
     return jsonify({"success": True, "message": f"Đã xóa {len(deleted)} file cookie.", "deleted": deleted})
 
+# ==================== AUDIO STREAMING / PREVIEW ENGINE ====================
+
+STREAM_CACHE = {}  # url -> {'stream_url': str, 'headers': dict, 'expires_at': float}
+STREAM_CACHE_LOCK = threading.Lock()
+
+def get_audio_stream_source(url):
+    """
+    Resolves direct audio stream URL and necessary headers for real-time playback.
+    Caches stream URLs to enable fast, seekable byte-range streaming without lag.
+    """
+    now = time.time()
+    with STREAM_CACHE_LOCK:
+        cached = STREAM_CACHE.get(url)
+        if cached and cached.get('expires_at', 0) > now:
+            return cached['stream_url'], cached.get('headers', {})
+
+    lower_url = url.lower()
+    stream_url = None
+    stream_headers = {}
+
+    # 1. TikTok (direct music stream from TikWM)
+    if any(d in lower_url for d in ["tiktok.com", "douyin.com"]):
+        try:
+            tk_info = get_tiktok_info(url)
+            if tk_info and tk_info.get("audio_url"):
+                stream_url = tk_info["audio_url"]
+                stream_headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                }
+        except Exception as te:
+            print(f"[!] Error resolving TikTok stream: {te}")
+
+    # 2. NhacCuaTui (direct 320k stream from NCT XML)
+    elif any(d in lower_url for d in ["nhaccuatui.com", "nct.vn"]):
+        try:
+            nct_info = get_nct_track_info(url)
+            if nct_info and nct_info.get("stream_url"):
+                stream_url = nct_info["stream_url"]
+                stream_headers = {
+                    "Referer": "https://www.nhaccuatui.com/",
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                }
+        except Exception as ne:
+            print(f"[!] Error resolving NhacCuaTui stream: {ne}")
+
+    # 3. Spotify (exact YouTube studio match or official 30s preview)
+    elif "spotify.com" in lower_url or lower_url.startswith("spotify:"):
+        match_spotify = re.search(r"spotify\.com/(?:intl-[a-zA-Z-]+/)?(track)/([a-zA-Z0-9]+)", url)
+        if not match_spotify:
+            match_spotify = re.search(r"spotify:(track):([a-zA-Z0-9]+)", url)
+
+        if match_spotify:
+            sp_id = match_spotify.group(2)
+            try:
+                sp_info = get_spotify_track_info(sp_id)
+                if sp_info:
+                    yt_match_url = find_exact_spotify_audio_match(
+                        sp_info["title"],
+                        sp_info["artist_str"],
+                        sp_info.get("duration", 0)
+                    )
+                    if yt_match_url:
+                        ydl_opts = {
+                            "format": "bestaudio/best",
+                            "quiet": True,
+                            "no_warnings": True,
+                            "skip_download": True
+                        }
+                        ext = extract_info_safe(ydl_opts, yt_match_url, download=False)
+                        if ext and ext.get("url"):
+                            stream_url = ext["url"]
+                            stream_headers = ext.get("http_headers", {})
+
+                    if not stream_url and sp_info.get("audio_preview_url"):
+                        stream_url = sp_info["audio_preview_url"]
+                        stream_headers = {"User-Agent": "Mozilla/5.0"}
+            except Exception as se:
+                print(f"[!] Error resolving Spotify stream: {se}")
+
+    # 4. YouTube / SoundCloud / Zing MP3 (via yt-dlp direct audio format)
+    if not stream_url:
+        target_url = clean_youtube_url(url)
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True
+        }
+        try:
+            ext = extract_info_safe(ydl_opts, target_url, download=False)
+            if ext and ext.get("url"):
+                stream_url = ext["url"]
+                stream_headers = ext.get("http_headers", {})
+        except Exception as ye:
+            print(f"[!] Error extracting direct audio stream: {ye}")
+
+    if stream_url:
+        with STREAM_CACHE_LOCK:
+            STREAM_CACHE[url] = {
+                'stream_url': stream_url,
+                'headers': stream_headers,
+                'expires_at': now + 1200
+            }
+        return stream_url, stream_headers
+
+    return None, None
+
+@app.route("/api/stream", methods=["GET"])
+def stream_audio():
+    """
+    Real-time streaming proxy endpoint with full Range header (HTTP 206 Partial Content) support.
+    Enables inline browser listening, fast scrubbing, and instantaneous audio playback.
+    """
+    raw_url = request.args.get("url", "").strip()
+    if not raw_url:
+        return jsonify({"error": "Thiếu tham số url bài hát"}), 400
+
+    stream_url, default_headers = get_audio_stream_source(raw_url)
+    if not stream_url:
+        return jsonify({"error": "Không thể lấy luồng âm thanh trực tiếp từ bài hát này"}), 404
+
+    req_headers = {}
+    if default_headers:
+        req_headers.update(default_headers)
+
+    range_header = request.headers.get("Range")
+    if range_header:
+        req_headers["Range"] = range_header
+
+    try:
+        upstream = requests.get(stream_url, headers=req_headers, stream=True, timeout=15)
+
+        def generate():
+            for chunk in upstream.iter_content(chunk_size=65536):
+                if chunk:
+                    yield chunk
+
+        res_headers = {}
+        for h in ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"]:
+            if h in upstream.headers:
+                res_headers[h] = upstream.headers[h]
+
+        if "Accept-Ranges" not in res_headers:
+            res_headers["Accept-Ranges"] = "bytes"
+        if "Content-Type" not in res_headers:
+            res_headers["Content-Type"] = "audio/mpeg"
+
+        return Response(
+            stream_with_context(generate()),
+            status=upstream.status_code,
+            headers=res_headers
+        )
+    except Exception as e:
+        print(f"[!] Stream delivery error: {e}")
+        return jsonify({"error": f"Lỗi phát nhạc trực tiếp: {str(e)}"}), 500
+
 @app.route("/api/info", methods=["POST"])
 def get_info():
     data = request.get_json() or {}
@@ -1218,6 +1376,7 @@ def get_info():
                     "duration": info["duration"],
                     "thumbnail": info["cover"],
                     "url": url,
+                    "stream_url": f"/api/stream?url={quote(url)}",
                     "extra": f"Năm phát hành: {info['year']}" if info.get('year') else "Spotify Master Audio"
                 })
 
@@ -1226,6 +1385,11 @@ def get_info():
                 if not info:
                     return jsonify({"success": False, "error": f"Không thể lấy dữ liệu {sp_type} từ Spotify!"}), 400
 
+                coll_tracks = info["tracks"]
+                for t in coll_tracks:
+                    if t.get("url"):
+                        t["stream_url"] = f"/api/stream?url={quote(t['url'])}"
+
                 return jsonify({
                     "success": True,
                     "platform": "spotify",
@@ -1233,11 +1397,12 @@ def get_info():
                     "is_album": sp_type == "album",
                     "title": info["title"],
                     "author": info["author"],
-                    "duration": sum(t["duration"] for t in info["tracks"]),
+                    "duration": sum(t["duration"] for t in coll_tracks),
                     "thumbnail": info["cover"],
                     "url": url,
-                    "tracks": info["tracks"],
-                    "extra": f"{len(info['tracks'])} bài hát"
+                    "stream_url": f"/api/stream?url={quote(url)}",
+                    "tracks": coll_tracks,
+                    "extra": f"{len(coll_tracks)} bài hát"
                 })
         else:
             return jsonify({"success": False, "error": "Liên kết Spotify không hợp lệ. Vui lòng cung cấp link Track, Album hoặc Playlist!"}), 400
@@ -1262,12 +1427,15 @@ def get_info():
                 tracks = []
                 for e in entries:
                     if e:
+                        yt_id = e.get("id")
+                        t_url = f"https://www.youtube.com/watch?v={yt_id}" if yt_id else ""
                         tracks.append({
                             "title": e.get("title", "YouTube Video"),
                             "author": e.get("uploader", info.get("uploader", "")),
                             "duration": e.get("duration", 0),
-                            "id": e.get("id"),
-                            "url": f"https://www.youtube.com/watch?v={e.get('id')}"
+                            "id": yt_id,
+                            "url": t_url,
+                            "stream_url": f"/api/stream?url={quote(t_url)}" if t_url else ""
                         })
 
                 return jsonify({
@@ -1280,6 +1448,7 @@ def get_info():
                     "duration": sum(t["duration"] for t in tracks if t.get("duration")),
                     "thumbnail": info.get("thumbnails", [{}])[-1].get("url") if info.get("thumbnails") else "",
                     "url": url,
+                    "stream_url": f"/api/stream?url={quote(url)}",
                     "tracks": tracks,
                     "extra": f"{len(tracks)} video trong danh sách"
                 })
@@ -1302,6 +1471,7 @@ def get_info():
                     "duration": info.get("duration", 0),
                     "thumbnail": thumb,
                     "url": url,
+                    "stream_url": f"/api/stream?url={quote(url)}",
                     "extra": f"{info.get('view_count', 0):,} lượt xem" if info.get("view_count") else ""
                 })
         except Exception as e:
@@ -1344,12 +1514,14 @@ def get_info():
                             t_thumb = e.get("thumbnail") or thumb
                             if t_thumb and "-large.jpg" in t_thumb:
                                 t_thumb = t_thumb.replace("-large.jpg", "-t500x500.jpg")
+                            t_u = e.get("webpage_url") or e.get("url") or url
                             tracks.append({
                                 "title": e.get("title", "SoundCloud Track"),
                                 "author": e.get("uploader", info.get("uploader", "SoundCloud Artist")),
                                 "duration": int(e.get("duration", 0)),
                                 "id": str(e.get("id", "")),
-                                "url": e.get("webpage_url") or e.get("url") or url,
+                                "url": t_u,
+                                "stream_url": f"/api/stream?url={quote(t_u)}" if t_u else "",
                                 "thumbnail": t_thumb
                             })
 
@@ -1363,6 +1535,7 @@ def get_info():
                         "duration": sum(t["duration"] for t in tracks if t.get("duration")),
                         "thumbnail": thumb,
                         "url": url,
+                        "stream_url": f"/api/stream?url={quote(url)}",
                         "tracks": tracks,
                         "extra": f"{len(tracks)} bài hát trong Playlist"
                     })
@@ -1376,6 +1549,7 @@ def get_info():
                         "duration": int(info.get("duration", 0)),
                         "thumbnail": thumb,
                         "url": url,
+                        "stream_url": f"/api/stream?url={quote(url)}",
                         "extra": f"{info.get('view_count', 0):,} lượt nghe" if info.get("view_count") else "SoundCloud High Quality"
                     })
         except Exception as e:
@@ -1397,6 +1571,7 @@ def get_info():
                 "duration": int(info.get("duration", 0)),
                 "thumbnail": info.get("thumbnail", ""),
                 "url": url,
+                "stream_url": f"/api/stream?url={quote(url)}",
                 "extra": "Zing MP3 320kbps HD Audio"
             })
         except Exception as e:
@@ -1418,6 +1593,7 @@ def get_info():
                 "duration": int(info.get("duration", 0)),
                 "thumbnail": info.get("thumbnail", ""),
                 "url": url,
+                "stream_url": f"/api/stream?url={quote(url)}",
                 "extra": "NhacCuaTui 320kbps Lossless Source"
             })
         except Exception as e:
@@ -1439,6 +1615,7 @@ def get_info():
                 "duration": int(info.get("duration", 0)),
                 "thumbnail": info.get("thumbnail", ""),
                 "url": url,
+                "stream_url": f"/api/stream?url={quote(url)}",
                 "extra": "TikTok Không Logo & Âm thanh Studio"
             })
         except Exception as e:

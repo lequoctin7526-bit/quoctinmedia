@@ -73,6 +73,184 @@ document.addEventListener('DOMContentLoaded', () => {
   const backendStatus = document.getElementById('backendStatus');
   const serverStatusText = document.getElementById('serverStatusText');
 
+  // Inline Audio Preview Player Elements
+  const audioPlayerWrapper = document.getElementById('audioPlayerWrapper');
+  const globalAudioPlayer = document.getElementById('globalAudioPlayer');
+  const playerPlayBtn = document.getElementById('playerPlayBtn');
+  const playerPlayIcon = document.getElementById('playerPlayIcon');
+  const playerSpinner = document.getElementById('playerSpinner');
+  const playerStatusText = document.getElementById('playerStatusText');
+  const playerCurrentTime = document.getElementById('playerCurrentTime');
+  const playerTotalTime = document.getElementById('playerTotalTime');
+  const playerProgressContainer = document.getElementById('playerProgressContainer');
+  const playerProgressBuffered = document.getElementById('playerProgressBuffered');
+  const playerProgressFill = document.getElementById('playerProgressFill');
+  const playerMuteBtn = document.getElementById('playerMuteBtn');
+  const playerMuteIcon = document.getElementById('playerMuteIcon');
+  const playerVolumeSlider = document.getElementById('playerVolumeSlider');
+
+  let activePlaylistPlayBtn = null;
+
+  function resetAudioPlayer() {
+    if (globalAudioPlayer) {
+      globalAudioPlayer.pause();
+      globalAudioPlayer.removeAttribute('src');
+      globalAudioPlayer.load();
+    }
+    if (playerPlayBtn) playerPlayBtn.classList.remove('playing');
+    if (playerPlayIcon) {
+      playerPlayIcon.className = 'fa-solid fa-play';
+      playerPlayIcon.classList.remove('hidden');
+    }
+    if (playerSpinner) playerSpinner.classList.add('hidden');
+    if (playerCurrentTime) playerCurrentTime.textContent = '00:00';
+    if (playerTotalTime) playerTotalTime.textContent = '00:00';
+    if (playerProgressFill) playerProgressFill.style.width = '0%';
+    if (playerProgressBuffered) playerProgressBuffered.style.width = '0%';
+    if (playerStatusText) playerStatusText.textContent = 'Nghe trực tiếp';
+    if (activePlaylistPlayBtn) {
+      activePlaylistPlayBtn.classList.remove('playing');
+      activePlaylistPlayBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+      activePlaylistPlayBtn = null;
+    }
+  }
+
+  function setupAudioTrack(streamUrl, duration, label) {
+    if (!globalAudioPlayer) return;
+    resetAudioPlayer();
+    globalAudioPlayer.src = streamUrl;
+    if (duration && duration > 0) {
+      playerTotalTime.textContent = formatDuration(duration);
+    }
+    if (label) {
+      playerStatusText.textContent = label;
+    }
+  }
+
+  if (globalAudioPlayer) {
+    globalAudioPlayer.addEventListener('waiting', () => {
+      if (playerPlayIcon) playerPlayIcon.classList.add('hidden');
+      if (playerSpinner) playerSpinner.classList.remove('hidden');
+    });
+
+    globalAudioPlayer.addEventListener('playing', () => {
+      if (playerPlayIcon) {
+        playerPlayIcon.className = 'fa-solid fa-pause';
+        playerPlayIcon.classList.remove('hidden');
+      }
+      if (playerSpinner) playerSpinner.classList.add('hidden');
+      if (playerPlayBtn) playerPlayBtn.classList.add('playing');
+    });
+
+    globalAudioPlayer.addEventListener('pause', () => {
+      if (playerPlayIcon) {
+        playerPlayIcon.className = 'fa-solid fa-play';
+        playerPlayIcon.classList.remove('hidden');
+      }
+      if (playerSpinner) playerSpinner.classList.add('hidden');
+      if (playerPlayBtn) playerPlayBtn.classList.remove('playing');
+      if (activePlaylistPlayBtn) {
+        activePlaylistPlayBtn.classList.remove('playing');
+        activePlaylistPlayBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+      }
+    });
+
+    globalAudioPlayer.addEventListener('timeupdate', () => {
+      if (!globalAudioPlayer.duration) return;
+      const curr = globalAudioPlayer.currentTime;
+      const dur = globalAudioPlayer.duration;
+      playerCurrentTime.textContent = formatDuration(curr);
+      if (dur && isFinite(dur)) {
+        playerTotalTime.textContent = formatDuration(dur);
+        const percent = (curr / dur) * 100;
+        playerProgressFill.style.width = `${percent}%`;
+      }
+    });
+
+    globalAudioPlayer.addEventListener('progress', () => {
+      if (globalAudioPlayer.buffered.length > 0 && globalAudioPlayer.duration) {
+        const bufferedEnd = globalAudioPlayer.buffered.end(globalAudioPlayer.buffered.length - 1);
+        const dur = globalAudioPlayer.duration;
+        if (dur && isFinite(dur)) {
+          const percent = (bufferedEnd / dur) * 100;
+          playerProgressBuffered.style.width = `${percent}%`;
+        }
+      }
+    });
+
+    globalAudioPlayer.addEventListener('ended', () => {
+      resetAudioPlayer();
+    });
+
+    globalAudioPlayer.addEventListener('error', (e) => {
+      console.warn('Audio streaming error:', e);
+      if (playerPlayIcon) {
+        playerPlayIcon.className = 'fa-solid fa-triangle-exclamation';
+        playerPlayIcon.classList.remove('hidden');
+      }
+      if (playerSpinner) playerSpinner.classList.add('hidden');
+      if (playerPlayBtn) playerPlayBtn.classList.remove('playing');
+      if (playerStatusText) playerStatusText.textContent = 'Lỗi phát nhạc';
+    });
+  }
+
+  if (playerPlayBtn) {
+    playerPlayBtn.addEventListener('click', () => {
+      if (!globalAudioPlayer) return;
+      if (!globalAudioPlayer.src) {
+        if (currentMediaData && currentMediaData.stream_url) {
+          setupAudioTrack(currentMediaData.stream_url, currentMediaData.duration, 'Nghe trực tiếp');
+        }
+      }
+      if (globalAudioPlayer.paused) {
+        globalAudioPlayer.play().catch(err => {
+          console.warn('Playback error:', err);
+        });
+      } else {
+        globalAudioPlayer.pause();
+      }
+    });
+  }
+
+  // Scrubber Seek (Click or scrub on progress bar)
+  if (playerProgressContainer) {
+    playerProgressContainer.addEventListener('click', (e) => {
+      if (!globalAudioPlayer || !globalAudioPlayer.duration || !isFinite(globalAudioPlayer.duration)) return;
+      const rect = playerProgressContainer.getBoundingClientRect();
+      const clickX = e.clientX - rect.left;
+      const fraction = Math.max(0, Math.min(1, clickX / rect.width));
+      globalAudioPlayer.currentTime = fraction * globalAudioPlayer.duration;
+    });
+  }
+
+  // Volume & Mute Controls
+  function updateMuteIcon() {
+    if (!playerMuteIcon || !globalAudioPlayer) return;
+    if (globalAudioPlayer.muted || globalAudioPlayer.volume === 0) {
+      playerMuteIcon.className = 'fa-solid fa-volume-xmark';
+    } else if (globalAudioPlayer.volume < 0.5) {
+      playerMuteIcon.className = 'fa-solid fa-volume-low';
+    } else {
+      playerMuteIcon.className = 'fa-solid fa-volume-high';
+    }
+  }
+
+  if (playerVolumeSlider && globalAudioPlayer) {
+    playerVolumeSlider.addEventListener('input', (e) => {
+      const val = parseFloat(e.target.value);
+      globalAudioPlayer.volume = val;
+      globalAudioPlayer.muted = (val === 0);
+      updateMuteIcon();
+    });
+  }
+
+  if (playerMuteBtn && globalAudioPlayer) {
+    playerMuteBtn.addEventListener('click', () => {
+      globalAudioPlayer.muted = !globalAudioPlayer.muted;
+      updateMuteIcon();
+    });
+  }
+
   // Application State
   let currentPlatform = 'youtube'; // 'youtube', 'spotify', 'soundcloud'
   let currentMode = 'audio';      // 'audio', 'video', 'thumbnail'
@@ -395,6 +573,7 @@ document.addEventListener('DOMContentLoaded', () => {
     statusAlert.classList.add('hidden');
     resultContainer.classList.add('hidden');
     progressBox.classList.add('hidden');
+    resetAudioPlayer();
 
     try {
       const response = await apiFetch('/api/info', {
@@ -513,6 +692,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (currentMode === 'video' && modeBtns[0]) modeBtns[0].click();
     }
 
+    // Direct Audio Preview Setup
+    if (data.stream_url) {
+      setupAudioTrack(data.stream_url, data.duration, data.is_playlist ? 'Xem trước danh sách' : 'Nghe trực tiếp');
+    } else {
+      resetAudioPlayer();
+    }
+
     if (data.is_playlist && data.tracks && data.tracks.length > 0) {
       playlistTotal.textContent = data.tracks.length;
       playlistItems.innerHTML = '';
@@ -521,9 +707,37 @@ document.addEventListener('DOMContentLoaded', () => {
         item.className = 'playlist-item';
         item.innerHTML = `
           <input type="checkbox" id="track_${idx}" value="${idx}" checked>
+          <button type="button" class="playlist-play-btn" data-track-idx="${idx}" title="Nghe trực tiếp bài này">
+            <i class="fa-solid fa-play"></i>
+          </button>
           <label for="track_${idx}" class="playlist-item-title">${idx + 1}. ${escapeHtml(track.title)} - <span style="color:var(--text-muted)">${escapeHtml(track.author || '')}</span></label>
           <span class="playlist-item-dur">${formatDuration(track.duration)}</span>
         `;
+        const playBtn = item.querySelector('.playlist-play-btn');
+        if (playBtn) {
+          playBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (activePlaylistPlayBtn === playBtn && !globalAudioPlayer.paused) {
+              globalAudioPlayer.pause();
+              playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+              playBtn.classList.remove('playing');
+              activePlaylistPlayBtn = null;
+            } else {
+              if (activePlaylistPlayBtn) {
+                activePlaylistPlayBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+                activePlaylistPlayBtn.classList.remove('playing');
+              }
+              activePlaylistPlayBtn = playBtn;
+              playBtn.classList.add('playing');
+              playBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+              const tUrl = track.stream_url || `/api/stream?url=${encodeURIComponent(track.url || '')}`;
+              const tLabel = track.title && track.title.length > 28 ? track.title.slice(0, 28) + '...' : (track.title || 'Bài hát');
+              setupAudioTrack(tUrl, track.duration, tLabel);
+              globalAudioPlayer.play().catch(console.warn);
+            }
+          });
+        }
         playlistItems.appendChild(item);
       });
       playlistSection.classList.remove('hidden');
