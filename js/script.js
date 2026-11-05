@@ -61,6 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const downloadBtn = document.getElementById('downloadBtn');
   const downloadBtnText = document.getElementById('downloadBtnText');
+  const cancelDownloadBtn = document.getElementById('cancelDownloadBtn');
+  const progressCancelBtn = document.getElementById('progressCancelBtn');
 
   const progressBox = document.getElementById('progressBox');
   const progressStatus = document.getElementById('progressStatus');
@@ -909,6 +911,7 @@ document.addEventListener('DOMContentLoaded', () => {
     progressBox.classList.remove('hidden');
     fileDownloadLink.classList.add('hidden');
     downloadBtn.disabled = true;
+    if (cancelDownloadBtn) cancelDownloadBtn.classList.remove('hidden');
 
     updateProgressUI(5, 'Đang gửi yêu cầu đến máy chủ...', '0 KB/s', 'Đang tính toán');
     progressBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -953,9 +956,46 @@ document.addEventListener('DOMContentLoaded', () => {
       console.error(err);
       showAlert(err.message, 'error');
       downloadBtn.disabled = false;
+      if (cancelDownloadBtn) cancelDownloadBtn.classList.add('hidden');
       progressBox.classList.add('hidden');
     }
   });
+
+  async function cancelCurrentDownload() {
+    const jobIdToCancel = activeDownloadJobId;
+
+    if (progressPollingInterval) {
+      clearInterval(progressPollingInterval);
+      progressPollingInterval = null;
+    }
+    activeDownloadJobId = null;
+
+    downloadBtn.disabled = false;
+    if (cancelDownloadBtn) cancelDownloadBtn.classList.add('hidden');
+    progressBox.classList.add('hidden');
+    fileDownloadLink.classList.add('hidden');
+
+    showAlert('Đã hủy quá trình tải xuống!', 'warning', false, 'Đã hủy tải');
+
+    if (jobIdToCancel) {
+      try {
+        await apiFetch('/api/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ job_id: jobIdToCancel })
+        });
+      } catch (err) {
+        console.warn('Cancel error on backend:', err);
+      }
+    }
+  }
+
+  if (cancelDownloadBtn) {
+    cancelDownloadBtn.addEventListener('click', cancelCurrentDownload);
+  }
+  if (progressCancelBtn) {
+    progressCancelBtn.addEventListener('click', cancelCurrentDownload);
+  }
 
   function startProgressPolling(jobId) {
     if (progressPollingInterval) clearInterval(progressPollingInterval);
@@ -969,6 +1009,7 @@ document.addEventListener('DOMContentLoaded', () => {
           clearInterval(progressPollingInterval);
           showAlert(data.error || 'Lỗi xử lý file.', 'error', false, 'Tải thất bại');
           downloadBtn.disabled = false;
+          if (cancelDownloadBtn) cancelDownloadBtn.classList.add('hidden');
           return;
         }
 
@@ -982,6 +1023,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (data.finished) {
           clearInterval(progressPollingInterval);
           downloadBtn.disabled = false;
+          if (cancelDownloadBtn) cancelDownloadBtn.classList.add('hidden');
 
           updateProgressUI(100, 'Tải và xử lý hoàn tất! Đang lưu file...', 'Xong', '0s');
 

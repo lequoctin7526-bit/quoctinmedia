@@ -417,6 +417,10 @@
               <i class="fa-solid fa-cloud-arrow-down"></i>
               <span id="downloadBtnText">Bắt đầu tải (MP3 320kbps)</span>
             </button>
+            <button id="cancelDownloadBtn" class="cancel-download-btn hidden" type="button" title="Hủy quá trình tải xuống">
+              <i class="fa-solid fa-ban"></i>
+              <span>Hủy tải xuống</span>
+            </button>
           </div>
         </div>
       </div>
@@ -438,6 +442,9 @@
           <span id="progressETA"><i class="fa-regular fa-clock"></i> Ước tính...</span>
         </div>
         <div class="progress-actions">
+          <button id="progressCancelBtn" class="progress-cancel-btn" type="button" title="Dừng và hủy tải xuống">
+            <i class="fa-solid fa-ban"></i> Hủy tải xuống
+          </button>
           <a id="fileDownloadLink" class="direct-download-link hidden" href="#" download>
             <i class="fa-solid fa-circle-down"></i> Bấm vào đây nếu file chưa tự động lưu
           </a>

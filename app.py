@@ -1663,8 +1663,15 @@ def download_worker(job_id, payload):
     job_folder = os.path.join(DOWNLOAD_DIR, job_id)
     os.makedirs(job_folder, exist_ok=True)
 
+    def check_cancelled():
+        with JOBS_LOCK:
+            if JOBS.get(job_id, {}).get("cancelled"):
+                raise Exception("Tác vụ đã bị người dùng hủy.")
+
     def progress_hook(d):
         with JOBS_LOCK:
+            if JOBS.get(job_id, {}).get("cancelled"):
+                raise Exception("Tác vụ đã bị người dùng hủy.")
             if d['status'] == 'downloading':
                 total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
                 downloaded = d.get('downloaded_bytes') or 0
@@ -2936,12 +2943,20 @@ def download_worker(job_id, payload):
             })
 
     except Exception as e:
-        print(f"[!] Job {job_id} error: {e}")
-        JOBS[job_id].update({
-            "error": str(e),
-            "finished": False,
-            "status": f"Lỗi: {str(e)}"
-        })
+        is_cancelled = "hủy" in str(e).lower() or JOBS.get(job_id, {}).get("cancelled", False)
+        print(f"[!] Job {job_id} {'cancelled' if is_cancelled else 'error'}: {e}")
+        with JOBS_LOCK:
+            JOBS[job_id].update({
+                "error": "Đã hủy tải xuống." if is_cancelled else str(e),
+                "finished": False,
+                "cancelled": is_cancelled,
+                "status": "Đã hủy tải xuống." if is_cancelled else f"Lỗi: {str(e)}"
+            })
+        if is_cancelled:
+            try:
+                shutil.rmtree(job_folder, ignore_errors=True)
+            except Exception:
+                pass
 
 @app.route("/api/thumbnail/download", methods=["GET", "POST"])
 def download_thumbnail_file():
@@ -3111,6 +3126,32 @@ def get_progress():
         "stems": job.get("stems", []),
         "is_karaoke": job.get("is_karaoke", False)
     })
+
+@app.route("/api/cancel", methods=["POST"])
+def cancel_download():
+    payload = request.get_json(silent=True) or {}
+    job_id = payload.get("job_id") or request.args.get("job_id", "").strip()
+    if not job_id:
+        return jsonify({"success": False, "error": "Thiếu job_id."}), 400
+
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if not job:
+            return jsonify({"success": False, "error": "Không tìm thấy tác vụ."}), 404
+
+        job["cancelled"] = True
+        job["finished"] = False
+        job["status"] = "Đã hủy tải xuống."
+        job["error"] = "Đã hủy tải xuống."
+
+    try:
+        job_folder = os.path.join(DOWNLOAD_DIR, job_id)
+        if os.path.exists(job_folder):
+            shutil.rmtree(job_folder, ignore_errors=True)
+    except Exception as e:
+        print(f"[!] Cleanup cancelled job {job_id} error: {e}")
+
+    return jsonify({"success": True, "message": "Đã hủy tác vụ tải thành công."})
 
 @app.route("/api/file/<job_id>")
 def download_file(job_id):
