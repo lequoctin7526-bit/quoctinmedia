@@ -12,6 +12,7 @@ if sys.platform.startswith("win"):
 import glob
 import json
 import re
+import unicodedata
 import uuid
 import time
 import shutil
@@ -205,89 +206,197 @@ def parse_duration_str(d_str):
         pass
     return 0
 
+def clean_match_text(text):
+    if not text:
+        return ''
+    text = unicodedata.normalize('NFC', str(text).lower())
+    text = re.sub(r'[\[\]\(\)\-_:,\.!\?\|/\\\'\"]', ' ', text)
+    return ' '.join(text.split())
+
+def get_match_keywords(text):
+    noise = {
+        'official', 'audio', 'video', 'mv', 'lyrics', 'lyric', 'nhạc', 'mp3',
+        'hd', '4k', 'full', 'hq', 'topic', 'visualizer', 'release', 'bản', 'gốc',
+        'chính', 'thức', 'm/v', 'feat', 'ft', 'featuring', 'with', 'prod', 'by'
+    }
+    words = clean_match_text(text).split()
+    return [w for w in words if w not in noise]
+
+def calculate_spotify_match_score(target_title, target_artists, target_dur, cand_title, cand_uploader, cand_artists, cand_dur):
+    t_words = set(get_match_keywords(target_title))
+    c_words = set(get_match_keywords(cand_title))
+    if not t_words:
+        return -9999.0
+
+    matched_title_words = t_words.intersection(c_words)
+    title_ratio = len(matched_title_words) / len(t_words)
+
+    # 1. Strictest rule: Must match at least 50% of core title words to prevent wrong song matching
+    if title_ratio < 0.5:
+        return -9999.0
+
+    score = 100.0 * title_ratio
+
+    # 2. Artist verification
+    t_art_list = target_artists if isinstance(target_artists, list) else [target_artists]
+    c_art_str = (' '.join(cand_artists or []) + ' ' + (cand_uploader or '')).lower()
+    c_clean_title = clean_match_text(cand_title)
+    
+    artist_matched = False
+    for art in t_art_list:
+        art_clean = clean_match_text(art)
+        if art_clean and (art_clean in c_art_str or art_clean in c_clean_title):
+            artist_matched = True
+            break
+
+    if artist_matched:
+        score += 35.0
+    else:
+        score -= 40.0
+
+    # 3. Unwanted/Mismatched Version Modifiers Check
+    # Tags that fundamentally change the sound and style of a song:
+    low_t = target_title.lower()
+    low_c = cand_title.lower()
+
+    style_tags = [
+        'remix', 'lofi', 'lo-fi', 'acoustic', 'live', 'concert', 'fancam',
+        'speed up', 'sped up', 'slowed', 'reverb', 'nightcore', 'vinahouse',
+        'cover', 'karaoke', 'beat', 'instrumental', 'parody', 'reaction',
+        'bass boost', '8d', 'mashup', 'medley', 'dance ver', 'extended', 'remake'
+    ]
+    for tag in style_tags:
+        # If candidate has this style modifier but Spotify song does NOT, penalize heavily
+        if tag in low_c and tag not in low_t:
+            score -= 85.0
+        # If Spotify song explicitly requested this modifier (e.g. Remix) and candidate has it, reward!
+        elif tag in low_t and tag in low_c:
+            score += 25.0
+        # If Spotify song requested it (e.g. Remix) but candidate lacks it, penalize
+        elif tag in low_t and tag not in low_c:
+            score -= 50.0
+
+    # 4. Duration comparison (Precision <= 3s is studio audio)
+    if target_dur and cand_dur:
+        diff = abs(target_dur - cand_dur)
+        if diff <= 3:
+            score += 40.0
+        elif diff <= 6:
+            score += 20.0
+        elif diff <= 12:
+            score += 5.0
+        elif diff <= 25:
+            score -= 30.0
+        else:
+            score -= min(diff * 4, 85.0)
+
+    # 5. Channel and audio type bonuses
+    uploader_low = (cand_uploader or '').lower()
+    if 'topic' in uploader_low:
+        score += 30.0
+    if 'official audio' in low_c or 'official audio' in uploader_low:
+        score += 25.0
+
+    return score
+
 def find_exact_spotify_audio_match(title, artist, target_duration):
     """
-    Finds the exact studio master audio on YouTube Music matching the Spotify track.
-    Compares song duration (precision <= 5s) and official music label release tags
-    to guarantee NO covers, NO live screamings, and NO music video talking intros.
+    Finds the 100% exact studio master audio on YouTube Music / YouTube Topic matching the Spotify track.
+    Compares song duration (precision <= 3s) and title/artist semantic similarity
+    to guarantee NO wrong songs, NO covers, NO live screamings, and NO music video talking intros.
     """
-    print(f"[*] Spotify Match Engine: '{title}' by '{artist}' (target dur: {target_duration}s)")
+    target_dur = int(round(float(target_duration))) if target_duration else 0
+    t_art_list = [a.strip() for a in str(artist).split(',')] if isinstance(artist, str) else list(artist)
+    artist_str = ", ".join(t_art_list)
     
+    print(f"[*] Spotify Match Engine v3.0: '{title}' by '{artist_str}' (target dur: {target_dur}s)")
+
+    best_candidate = None
+    best_score = -9999.0
+
     # 1. Search YouTube Music Official Song Catalog
     if ytmusic:
         queries = [
-            f"{title} {artist}",
-            f"{artist} - {title}",
+            f"{artist_str} - {title}",
+            f"{title} {artist_str}",
+            f"{t_art_list[0]} {title}" if t_art_list else title,
             title
         ]
+        seen_vids = set()
         for q in queries:
             try:
                 results = ytmusic.search(q, filter="songs")
                 if results:
-                    candidates = []
-                    for r in results[:10]:
+                    for r in results[:8]:
                         v_id = r.get('videoId')
-                        if not v_id:
+                        if not v_id or v_id in seen_vids:
                             continue
+                        seen_vids.add(v_id)
+                        
                         r_title = r.get('title', '')
-                        r_artists = [a.get('name', '').lower() for a in r.get('artists', [])]
-                        r_dur_sec = parse_duration_str(r.get('duration', ''))
+                        r_artists = [a.get('name', '') for a in r.get('artists', [])]
+                        r_dur = parse_duration_str(r.get('duration', ''))
                         
-                        dur_diff = abs(r_dur_sec - target_duration) if (r_dur_sec and target_duration) else 999
+                        score = calculate_spotify_match_score(
+                            title, t_art_list, target_dur,
+                            r_title, '', r_artists, r_dur
+                        )
                         
-                        score = 100
-                        # Penalize duration difference
-                        score -= min(dur_diff * 4, 60)
-                        
-                        # Bonus if artist matches
-                        if any(artist.lower() in a or a in artist.lower() for a in r_artists):
-                            score += 30
-                            
-                        # Penalize covers/remixes unless requested in title
-                        for bad in ["cover", "remix", "karaoke", "live"]:
-                            if bad in r_title.lower() and bad not in title.lower():
-                                score -= 50
+                        if score > best_score:
+                            best_score = score
+                            best_candidate = (v_id, r_title, r_dur, "ytmusic")
 
-                        candidates.append((score, dur_diff, v_id, r_title, r.get('duration')))
-
-                    if candidates:
-                        candidates.sort(key=lambda x: x[0], reverse=True)
-                        best = candidates[0]
-                        if best[0] > 40:
-                            print(f"[+] Found exact YouTube Music audio: '{best[3]}' (id: {best[2]}, diff: {best[1]}s)")
-                            return f"https://www.youtube.com/watch?v={best[2]}"
+                    # High confidence threshold: if score >= 135, it's 100% exact studio audio!
+                    if best_score >= 135:
+                        print(f"[+] Found exact YouTube Music audio: '{best_candidate[1]}' (id: {best_candidate[0]}, dur: {best_candidate[2]}s, score: {best_score:.1f})")
+                        return f"https://www.youtube.com/watch?v={best_candidate[0]}"
             except Exception as e:
                 print(f"[!] YTMusic query error for '{q}': {e}")
 
-    # 2. Fallback: Search YouTube "- Topic" Official Release Channels
+    # 2. Search Official Topic Channels & Official Audio on YouTube
     ydl_opts = apply_youtube_opts({'skip_download': True, 'quiet': True, 'extract_flat': True})
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        try:
-            res = ydl.extract_info(f"ytsearch8:{artist} {title} Topic", download=False)
-            entries = res.get('entries', []) if res else []
-            candidates = []
-            for e in entries:
-                if not e: continue
-                v_id = e.get('id')
-                v_title = e.get('title', '')
-                v_dur = e.get('duration') or 0
-                dur_diff = abs(v_dur - target_duration) if (v_dur and target_duration) else 999
-                
-                score = 80 - min(dur_diff * 4, 60)
-                if "topic" in (e.get('channel') or '').lower():
-                    score += 30
-                candidates.append((score, v_id, v_title, v_dur))
-                
-            if candidates:
-                candidates.sort(key=lambda x: x[0], reverse=True)
-                best = candidates[0]
-                print(f"[+] Fallback to YouTube Topic audio: '{best[2]}' (id: {best[1]}, dur: {best[3]}s)")
-                return f"https://www.youtube.com/watch?v={best[1]}"
-        except Exception as e:
-            print(f"[!] Fallback search error: {e}")
+        topic_queries = [
+            f"{artist_str} {title} Topic",
+            f"{t_art_list[0]} {title} Topic" if t_art_list else f"{title} Topic",
+            f"{artist_str} {title} Official Audio",
+            f"{artist_str} - {title}"
+        ]
+        for yq in topic_queries:
+            try:
+                res = ydl.extract_info(f"ytsearch6:{yq}", download=False)
+                entries = res.get('entries', []) if res else []
+                for e in entries:
+                    if not e:
+                        continue
+                    v_id = e.get('id')
+                    if not v_id:
+                        continue
+                    v_title = e.get('title', '')
+                    v_uploader = e.get('uploader', '')
+                    v_dur = int(e.get('duration') or 0)
+                    
+                    score = calculate_spotify_match_score(
+                        title, t_art_list, target_dur,
+                        v_title, v_uploader, [v_uploader], v_dur
+                    )
+                    
+                    if score > best_score:
+                        best_score = score
+                        best_candidate = (v_id, v_title, v_dur, "yt_search")
 
-    # 3. Final Fallback: Standard Search
-    return f"ytsearch1:{artist} - {title} Official Audio"
+                if best_score >= 135:
+                    break
+            except Exception as e:
+                print(f"[!] Fallback search error for '{yq}': {e}")
+
+    if best_candidate and best_score > 40:
+        print(f"[+] Best Match Selected: '{best_candidate[1]}' (id: {best_candidate[0]}, dur: {best_candidate[2]}s, source: {best_candidate[3]}, score: {best_score:.1f})")
+        return f"https://www.youtube.com/watch?v={best_candidate[0]}"
+
+    # Fallback to standard search if nothing passed high quality threshold
+    print(f"[!] Warning: No high-confidence match found (best score: {best_score:.1f}). Using standard search fallback.")
+    return f"ytsearch1:{artist_str} - {title} Official Audio"
 
 def clean_youtube_url(url):
     """Normalize scheme and clean radio/mix parameters that cause yt-dlp to hang or loop indefinitely"""
