@@ -302,19 +302,17 @@ def calculate_spotify_match_score(target_title, target_artists, target_dur, cand
 def find_exact_spotify_audio_match(title, artist, target_duration):
     """
     Finds the 100% exact studio master audio on YouTube Music / YouTube Topic matching the Spotify track.
-    Compares song duration (precision <= 3s) and title/artist semantic similarity
-    to guarantee NO wrong songs, NO covers, NO live screamings, and NO music video talking intros.
+    Implements multi-source traversal without premature breaks and detailed console logging.
     """
     target_dur = int(round(float(target_duration))) if target_duration else 0
     t_art_list = [a.strip() for a in str(artist).split(',')] if isinstance(artist, str) else list(artist)
     artist_str = ", ".join(t_art_list)
-    
-    print(f"[*] Spotify Match Engine v3.0: '{title}' by '{artist_str}' (target dur: {target_dur}s)")
 
     best_candidate = None
     best_score = -9999.0
+    seen_vids = set()
 
-    # 1. Search YouTube Music Official Song Catalog
+    # Pass 1: YouTube Music Official Song Catalog (filter="songs")
     if ytmusic:
         queries = [
             f"{artist_str} - {title}",
@@ -322,7 +320,6 @@ def find_exact_spotify_audio_match(title, artist, target_duration):
             f"{t_art_list[0]} {title}" if t_art_list else title,
             title
         ]
-        seen_vids = set()
         for q in queries:
             try:
                 results = ytmusic.search(q, filter="songs")
@@ -344,58 +341,73 @@ def find_exact_spotify_audio_match(title, artist, target_duration):
                         
                         if score > best_score:
                             best_score = score
-                            best_candidate = (v_id, r_title, r_dur, "ytmusic")
+                            best_candidate = {
+                                "id": v_id,
+                                "title": r_title,
+                                "uploader": ", ".join(r_artists) if r_artists else "YouTube Music",
+                                "duration": r_dur,
+                                "source": "YouTube Music (Song)"
+                            }
 
-                    # High confidence threshold: if score >= 135, it's 100% exact studio audio!
-                    if best_score >= 135:
-                        print(f"[+] Found exact YouTube Music audio: '{best_candidate[1]}' (id: {best_candidate[0]}, dur: {best_candidate[2]}s, score: {best_score:.1f})")
-                        return f"https://www.youtube.com/watch?v={best_candidate[0]}"
+                    # Ngưỡng hoàn hảo tuyệt đối: nếu >= 195 điểm (khớp 100% title, ca sĩ, dur <= 3s, official), có thể dừng sớm
+                    if best_score >= 195.0:
+                        break
             except Exception as e:
                 print(f"[!] YTMusic query error for '{q}': {e}")
 
-    # 2. Search Official Topic Channels & Official Audio on YouTube
-    ydl_opts = apply_youtube_opts({'skip_download': True, 'quiet': True, 'extract_flat': True})
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        topic_queries = [
-            f"{artist_str} {title} Topic",
-            f"{t_art_list[0]} {title} Topic" if t_art_list else f"{title} Topic",
-            f"{artist_str} {title} Official Audio",
-            f"{artist_str} - {title}"
-        ]
-        for yq in topic_queries:
-            try:
-                res = ydl.extract_info(f"ytsearch6:{yq}", download=False)
-                entries = res.get('entries', []) if res else []
-                for e in entries:
-                    if not e:
-                        continue
-                    v_id = e.get('id')
-                    if not v_id:
-                        continue
-                    v_title = e.get('title', '')
-                    v_uploader = e.get('uploader', '')
-                    v_dur = int(e.get('duration') or 0)
-                    
-                    score = calculate_spotify_match_score(
-                        title, t_art_list, target_dur,
-                        v_title, v_uploader, [v_uploader], v_dur
-                    )
-                    
-                    if score > best_score:
-                        best_score = score
-                        best_candidate = (v_id, v_title, v_dur, "yt_search")
+    # Pass 2: YouTube Official Topic & Official Audio Channels (ytsearch)
+    if best_score < 195.0:
+        ydl_opts = apply_youtube_opts({'skip_download': True, 'quiet': True, 'extract_flat': True})
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            topic_queries = [
+                f"{artist_str} {title} Official Audio",
+                f"{artist_str} {title} Topic",
+                f"{t_art_list[0]} {title} Topic" if t_art_list else f"{title} Topic",
+                f"{artist_str} - {title}"
+            ]
+            for yq in topic_queries:
+                try:
+                    res = ydl.extract_info(f"ytsearch6:{yq}", download=False)
+                    entries = res.get('entries', []) if res else []
+                    for e in entries:
+                        if not e:
+                            continue
+                        v_id = e.get('id')
+                        if not v_id or v_id in seen_vids:
+                            continue
+                        seen_vids.add(v_id)
 
-                if best_score >= 135:
-                    break
-            except Exception as e:
-                print(f"[!] Fallback search error for '{yq}': {e}")
+                        v_title = e.get('title', '')
+                        v_uploader = e.get('uploader', '')
+                        v_dur = int(e.get('duration') or 0)
+                        
+                        score = calculate_spotify_match_score(
+                            title, t_art_list, target_dur,
+                            v_title, v_uploader, [v_uploader], v_dur
+                        )
+                        
+                        if score > best_score:
+                            best_score = score
+                            best_candidate = {
+                                "id": v_id,
+                                "title": v_title,
+                                "uploader": v_uploader,
+                                "duration": v_dur,
+                                "source": "YouTube Topic / Audio"
+                            }
 
-    if best_candidate and best_score > 40:
-        print(f"[+] Best Match Selected: '{best_candidate[1]}' (id: {best_candidate[0]}, dur: {best_candidate[2]}s, source: {best_candidate[3]}, score: {best_score:.1f})")
-        return f"https://www.youtube.com/watch?v={best_candidate[0]}"
+                    if best_score >= 195.0:
+                        break
+                except Exception as e:
+                    print(f"[!] Fallback search error for '{yq}': {e}")
 
-    # Fallback to standard search if nothing passed high quality threshold
-    print(f"[!] Warning: No high-confidence match found (best score: {best_score:.1f}). Using standard search fallback.")
+    # Kiểm tra ứng viên tốt nhất với ngưỡng tin cậy
+    if best_candidate and best_score > 40.0:
+        print(f"[*] Spotify Match Engine v3.0: [Spotify: '{title}' - '{artist_str}' - {target_dur}s] -> [YouTube Chọn: '{best_candidate['title']}' - '{best_candidate['uploader']}' - {best_candidate['duration']}s - Score: {best_score:.1f} ({best_candidate['source']})]")
+        return f"https://www.youtube.com/watch?v={best_candidate['id']}"
+
+    # Fallback tiêu chuẩn nếu không tìm được ứng viên vượt ngưỡng
+    print(f"[!] Cảnh báo: Không tìm thấy ứng viên vượt ngưỡng tin cậy (Điểm cao nhất: {best_score:.1f}). Dùng fallback: ytsearch1:{artist_str} - {title} Official Audio")
     return f"ytsearch1:{artist_str} - {title} Official Audio"
 
 def clean_youtube_url(url):
