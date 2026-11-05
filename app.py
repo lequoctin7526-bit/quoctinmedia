@@ -112,11 +112,12 @@ def get_cookie_file():
 
 def get_youtube_extractor_args(clients=None):
     """
-    Returns client configurations that bypass 'Sign in to confirm you’re not a bot'.
-    Using 'web_embedded', 'android', 'ios' Innertube clients.
+    Returns client configurations that bypass 'Sign in to confirm you're not a bot'
+    and Error 152 ('Watch video on YouTube' embedding blocks).
+    Prioritizes Android & iOS native clients over web_embedded.
     """
     if not clients:
-        clients = ["web_embedded", "android", "ios"]
+        clients = ["android", "ios", "mweb"]
     return {
         "youtube": {
             "player_client": clients,
@@ -144,10 +145,11 @@ def apply_youtube_opts(opts, is_youtube=True, clients=None):
 def extract_info_safe(base_opts, url, download=False):
     """
     Safely extract info with intelligent multi-strategy fallback for YouTube bot blocks:
-    Strategy 1: web_embedded + android + ios (primary anti-bot)
-    Strategy 2: android + ios
-    Strategy 3: ios only
-    Strategy 4: default
+    Strategy 1: android + ios (primary anti-datacenter block & Error 152 bypass)
+    Strategy 2: ios only
+    Strategy 3: android only
+    Strategy 4: mweb
+    Strategy 5: web_embedded
     """
     is_yt = any(d in url.lower() for d in ["youtube.com", "youtu.be"])
     if not is_yt:
@@ -156,10 +158,12 @@ def extract_info_safe(base_opts, url, download=False):
             return ydl.extract_info(url, download=download)
 
     strategies = [
-        ["web_embedded", "android", "ios"],
         ["android", "ios"],
         ["ios"],
-        ["web_embedded"]
+        ["android"],
+        ["mweb"],
+        ["web_embedded", "android", "ios"],
+        ["web"]
     ]
     last_error = None
     for clients in strategies:
@@ -172,7 +176,8 @@ def extract_info_safe(base_opts, url, download=False):
         except Exception as e:
             last_error = e
             err_msg = str(e).lower()
-            if "private video" in err_msg or "video unavailable" in err_msg or "not found" in err_msg:
+            # Only abort early if it's genuinely private or removed, NEVER on embedding or bot restrictions
+            if ("private video" in err_msg or "has been removed" in err_msg) and "152" not in err_msg and "watch video on youtube" not in err_msg:
                 raise e
 
     if last_error:
