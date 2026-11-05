@@ -1154,6 +1154,43 @@ def get_tiktok_info(url):
 def index():
     return send_file(os.path.join(BASE_DIR, "index.html"))
 
+@app.route("/api/debug_test")
+def debug_test():
+    target = request.args.get("v", "CgJSDXTS6ws")
+    test_url = f"https://www.youtube.com/watch?v={target}"
+    results = {}
+    
+    test_configs = [
+        ("android_no_cookie", ["android"], False),
+        ("mweb_no_cookie", ["mweb"], False),
+        ("web_no_cookie", ["web"], False),
+        ("tv_no_cookie", ["tv_embedded"], False),
+        ("web_with_cookie", ["web"], True),
+        ("android_with_cookie", ["android"], True),
+    ]
+    
+    for name, clients, use_cookie in test_configs:
+        opts = {
+            "format": "bestaudio/best/18/b",
+            "simulate": True,
+            "quiet": True,
+            "no_warnings": True,
+            "extractor_args": {"youtube": {"player_client": clients, "player_skip": ["configs"]}}
+        }
+        if use_cookie:
+            c = get_cookie_file()
+            if c:
+                opts["cookiefile"] = c
+        try:
+            with yt_dlp.YoutubeDL(opts) as ydl:
+                info = ydl.extract_info(test_url, download=False)
+                fmts = [f.get("format_id") for f in info.get("formats", []) if f.get("url")]
+                results[name] = {"success": True, "direct_urls": len(fmts)}
+        except Exception as e:
+            results[name] = {"success": False, "error": str(e)}
+
+    return jsonify(results)
+
 @app.route("/api/health")
 def health():
     cookie_p = get_cookie_file()
