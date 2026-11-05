@@ -114,10 +114,10 @@ def get_youtube_extractor_args(clients=None):
     """
     Returns client configurations that bypass 'Sign in to confirm you're not a bot'
     and Error 152 ('Watch video on YouTube' embedding blocks).
-    Prioritizes Android & iOS native clients over web_embedded.
+    Prioritizes Android & Android VR & MWeb clients over iOS/web (iOS has SABR format errors).
     """
     if not clients:
-        clients = ["android", "ios", "mweb"]
+        clients = ["android", "android_vr", "mweb"]
     return {
         "youtube": {
             "player_client": clients,
@@ -145,11 +145,12 @@ def apply_youtube_opts(opts, is_youtube=True, clients=None):
 def extract_info_safe(base_opts, url, download=False):
     """
     Safely extract info with intelligent multi-strategy fallback for YouTube bot blocks:
-    Strategy 1: android + ios (primary anti-datacenter block & Error 152 bypass)
-    Strategy 2: ios only
-    Strategy 3: android only
-    Strategy 4: mweb
-    Strategy 5: web_embedded
+    Strategy 1: android + android_vr (bypasses datacenter bot blocks & Error 152)
+    Strategy 2: android only
+    Strategy 3: mweb
+    Strategy 4: web_music
+    Strategy 5: web_embedded + android
+    Strategy 6: web
     """
     is_yt = any(d in url.lower() for d in ["youtube.com", "youtu.be"])
     if not is_yt:
@@ -158,11 +159,11 @@ def extract_info_safe(base_opts, url, download=False):
             return ydl.extract_info(url, download=download)
 
     strategies = [
-        ["android", "ios"],
-        ["ios"],
+        ["android", "android_vr"],
         ["android"],
         ["mweb"],
-        ["web_embedded", "android", "ios"],
+        ["web_music"],
+        ["web_embedded", "android"],
         ["web"]
     ]
     last_error = None
@@ -176,8 +177,8 @@ def extract_info_safe(base_opts, url, download=False):
         except Exception as e:
             last_error = e
             err_msg = str(e).lower()
-            # Only abort early if it's genuinely private or removed, NEVER on embedding or bot restrictions
-            if ("private video" in err_msg or "has been removed" in err_msg) and "152" not in err_msg and "watch video on youtube" not in err_msg:
+            # Only abort early if it's genuinely private or removed, NEVER on embedding, SABR, or bot restrictions
+            if ("private video" in err_msg or "has been removed" in err_msg) and "152" not in err_msg and "watch video on youtube" not in err_msg and "format is not available" not in err_msg:
                 raise e
 
     if last_error:
@@ -1261,7 +1262,7 @@ def get_audio_stream_source(url):
                     )
                     if yt_match_url:
                         ydl_opts = {
-                            "format": "bestaudio/best",
+                            "format": "bestaudio/best/18/b",
                             "quiet": True,
                             "no_warnings": True,
                             "skip_download": True
@@ -1281,7 +1282,7 @@ def get_audio_stream_source(url):
     if not stream_url:
         target_url = clean_youtube_url(url)
         ydl_opts = {
-            "format": "bestaudio/best",
+            "format": "bestaudio/best/18/b",
             "quiet": True,
             "no_warnings": True,
             "skip_download": True
@@ -1894,7 +1895,7 @@ def download_worker(job_id, payload):
                 JOBS[job_id]["percent"] = 25
 
                 ydl_opts = apply_youtube_opts({
-                    "format": "bestaudio/best",
+                    "format": "bestaudio/best/18/b",
                     "outtmpl": os.path.join(job_folder, "%(title)s.%(ext)s"),
                     "progress_hooks": [progress_hook],
                     "quiet": True,
@@ -2079,7 +2080,7 @@ def download_worker(job_id, payload):
                     raw_template = os.path.join(job_folder, f"{t_tag}.%(ext)s")
 
                     ydl_opts = apply_youtube_opts({
-                        "format": "bestaudio/best",
+                        "format": "bestaudio/best/18/b",
                         "outtmpl": raw_template,
                         "quiet": True,
                         "no_warnings": True,
@@ -2251,7 +2252,7 @@ def download_worker(job_id, payload):
                 JOBS[job_id]["percent"] = 45
 
                 ydl_opts = apply_youtube_opts({
-                    "format": "bestaudio/best",
+                    "format": "bestaudio/best/18/b",
                     "outtmpl": os.path.join(job_folder, "source.%(ext)s"),
                     "progress_hooks": [progress_hook],
                     "quiet": True,
@@ -2397,7 +2398,7 @@ def download_worker(job_id, payload):
                 JOBS[job_id]["percent"] = 45
 
                 ydl_opts = apply_youtube_opts({
-                    "format": "bestaudio/best",
+                    "format": "bestaudio/best/18/b",
                     "outtmpl": os.path.join(job_folder, "source.%(ext)s"),
                     "progress_hooks": [progress_hook],
                     "quiet": True,
@@ -2774,7 +2775,7 @@ def download_worker(job_id, payload):
 
                             if mode == "audio":
                                 target_ext = req_format if req_format in ['mp3', 'flac', 'm4a', 'wav'] else 'mp3'
-                                ydl_t_opts["format"] = "bestaudio/best"
+                                ydl_t_opts["format"] = "bestaudio/best/18/b"
                                 if target_ext == "mp3":
                                     ydl_t_opts["writethumbnail"] = True
                                     ydl_t_opts["postprocessors"] = [
@@ -2790,7 +2791,7 @@ def download_worker(job_id, payload):
                             else:  # mode == "video"
                                 target_ext = "mp4"
                                 height = int(quality) if quality.isdigit() else 1080
-                                ydl_t_opts["format"] = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+                                ydl_t_opts["format"] = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best/18/b"
                                 ydl_t_opts["merge_output_format"] = "mp4"
                                 ydl_t_opts["postprocessors"] = [{"key": "FFmpegMetadata", "add_metadata": True}]
 
@@ -2848,7 +2849,7 @@ def download_worker(job_id, payload):
             }, is_youtube=True)
 
             if mode == "audio":
-                ydl_opts["format"] = "bestaudio/best"
+                ydl_opts["format"] = "bestaudio/best/18/b"
                 
                 if req_format == "original":
                     pass
@@ -2901,7 +2902,7 @@ def download_worker(job_id, payload):
                 elif quality == "720":
                     height = 720
 
-                ydl_opts["format"] = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+                ydl_opts["format"] = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best/18/b"
                 ydl_opts["merge_output_format"] = "mp4"
                 ydl_opts["postprocessors"] = [{
                     "key": "FFmpegMetadata",
@@ -2916,7 +2917,9 @@ def download_worker(job_id, payload):
                 if "not a bot" in err_msg or "sign in" in err_msg or "format is not available" in err_msg or "152" in err_msg or "watch video on youtube" in err_msg or "unavailable" in err_msg:
                     print(f"[*] Retrying YouTube download with alternative mobile clients...")
                     retry_opts = dict(ydl_opts)
-                    retry_opts = apply_youtube_opts(retry_opts, is_youtube=True, clients=["android", "ios"])
+                    retry_opts = apply_youtube_opts(retry_opts, is_youtube=True, clients=["android", "android_vr"])
+                    if mode == "audio":
+                        retry_opts["format"] = "bestaudio/best/18/b"
                     with yt_dlp.YoutubeDL(retry_opts) as ydl_retry:
                         ydl_retry.download([url])
                 else:
