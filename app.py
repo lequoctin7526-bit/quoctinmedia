@@ -1,5 +1,6 @@
 import os
 import sys
+import copy
 
 # Configure UTF-8 for console output on Windows
 if sys.platform.startswith("win"):
@@ -153,13 +154,14 @@ def get_youtube_extractor_args(clients=None):
     """
     Returns client configurations that bypass 'Sign in to confirm you're not a bot'
     and Error 152 ('Watch video on YouTube' embedding blocks).
+    Crucially skips 'webpage' and 'configs' so YouTube bot checks on datacenter IPs are never triggered.
     """
     if not clients:
         clients = ["android", "android_vr", "web", "mweb"]
     return {
         "youtube": {
             "player_client": clients,
-            "player_skip": ["configs"]
+            "player_skip": ["webpage", "configs"]
         }
     }
 
@@ -1203,7 +1205,7 @@ def health():
 
     return jsonify({
         "status": "online",
-        "commit": "v2.6.0-robust",
+        "commit": "v3.0.0-skip-webpage",
         "has_node": has_node,
         "ffmpeg": bool(FFMPEG_EXE),
         "ffmpeg_path": FFMPEG_EXE,
@@ -3012,7 +3014,7 @@ def download_worker(job_id, payload):
             download_success = False
             last_dl_err = None
             for strat in download_strategies:
-                current_opts = dict(ydl_opts)
+                current_opts = copy.deepcopy(ydl_opts)
                 current_opts = apply_youtube_opts(current_opts, is_youtube=True, clients=strat["clients"], with_cookies=strat["use_cookie"])
                 if mode == "audio":
                     current_opts["format"] = "bestaudio/best/18/b"
