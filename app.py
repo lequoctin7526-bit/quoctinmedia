@@ -821,11 +821,19 @@ def get_spotify_collection_info(coll_type, coll_id):
             raw_tracks = entity.get('trackList', [])
             tracks = []
             for t in raw_tracks:
+                uri = t.get('uri') or ''
+                t_id = uri.split(':')[-1] if uri else ''
+                t_url = f"https://open.spotify.com/track/{t_id}" if t_id else ''
+                t_author = t.get('subtitle') or subtitle
+                t_preview = t.get('audioPreview', {}).get('url') if isinstance(t.get('audioPreview'), dict) else ''
                 tracks.append({
                     'title': t.get('title', 'Track'),
-                    'author': t.get('subtitle', subtitle),
+                    'author': t_author,
                     'duration': t.get('duration', 0) / 1000.0,
-                    'uri': t.get('uri')
+                    'uri': uri,
+                    'id': t_id,
+                    'url': t_url,
+                    'audio_preview_url': t_preview
                 })
 
             return {
@@ -1648,7 +1656,8 @@ def download_worker(job_id, payload):
     mode = payload.get("mode", "audio")
     req_format = payload.get("format", "mp3")
     quality = payload.get("quality", "320")
-    selected_tracks = payload.get("selected_tracks", [])
+    selected_tracks = [int(x) for x in payload.get("selected_tracks", []) if str(x).isdigit()]
+    selected_items = payload.get("selected_items", [])
     custom_title = payload.get("title", "")
 
     job_folder = os.path.join(DOWNLOAD_DIR, job_id)
@@ -1685,81 +1694,93 @@ def download_worker(job_id, payload):
             target_ext = req_format if req_format in ['mp3', 'flac', 'm4a', 'wav'] else 'mp3'
 
             # Playlist / Set handling with tracks selection
-            if selected_tracks or "/sets/" in url:
+            if selected_tracks or selected_items or "/sets/" in url:
                 JOBS[job_id]["status"] = "Đang phân tích danh sách phát SoundCloud..."
                 JOBS[job_id]["percent"] = 10
 
-                with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True, 'skip_download': True}) as ydl:
-                    info = ydl.extract_info(url, download=False)
-                    entries = info.get("entries", [])
-                    playlist_title = info.get("title", "SoundCloud Playlist")
+                targets = []
+                playlist_title = "SoundCloud Playlist"
 
-                if entries:
-                    targets = [entries[i] for i in selected_tracks if i < len(entries)] if selected_tracks else entries[:10]
-                    total_t = len(targets)
+                if selected_items and isinstance(selected_items, list):
+                    targets = selected_items
+                    playlist_title = custom_title or "SoundCloud Playlist"
+                else:
+                    with yt_dlp.YoutubeDL({'quiet': True, 'extract_flat': True, 'skip_download': True}) as ydl:
+                        info = ydl.extract_info(url, download=False)
+                        entries = info.get("entries", [])
+                        playlist_title = info.get("title", "SoundCloud Playlist")
+                    if entries:
+                        targets = [entries[i] for i in selected_tracks if i < len(entries)] if selected_tracks else entries[:10]
 
-                    for idx, entry in enumerate(targets):
-                        t_url = entry.get("webpage_url") or entry.get("url")
-                        t_title = entry.get("title", f"Track_{idx+1}")
-                        JOBS[job_id]["status"] = f"Đang tải ({idx+1}/{total_t}): {t_title}..."
-                        JOBS[job_id]["percent"] = int((idx / total_t) * 85) + 10
+                if targets:
+                    # If user chose exactly 1 track from the playlist, download it directly without zip
+                    if len(targets) == 1:
+                        single_entry = targets[0]
+                        url = single_entry.get("webpage_url") or single_entry.get("url")
+                    else:
+                        total_t = len(targets)
+                        for idx, entry in enumerate(targets):
+                            t_url = entry.get("webpage_url") or entry.get("url")
+                            t_title = entry.get("title", f"Track_{idx+1}")
+                            JOBS[job_id]["status"] = f"Đang tải ({idx+1}/{total_t}): {t_title}..."
+                            JOBS[job_id]["percent"] = int((idx / total_t) * 85) + 10
 
-                        ydl_track_opts = {
-                            "format": "bestaudio/best",
-                            "outtmpl": os.path.join(job_folder, f"{idx+1:02d} - %(title)s.%(ext)s"),
-                            "quiet": True,
-                            "no_warnings": True,
-                            "ffmpeg_location": FFMPEG_EXE,
-                            "writethumbnail": True,
-                        }
-                        postprocessors = []
-                        if target_ext == 'mp3':
-                            postprocessors.extend([
-                                {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '320'},
-                                {'key': 'FFmpegMetadata', 'add_metadata': True},
-                                {'key': 'EmbedThumbnail', 'already_have_thumbnail': False}
-                            ])
-                        elif target_ext == 'flac':
-                            postprocessors.extend([
-                                {'key': 'FFmpegExtractAudio', 'preferredcodec': 'flac'},
-                                {'key': 'FFmpegMetadata', 'add_metadata': True}
-                            ])
-                        elif target_ext == 'm4a':
-                            postprocessors.extend([
-                                {'key': 'FFmpegExtractAudio', 'preferredcodec': 'm4a', 'preferredquality': '256'},
-                                {'key': 'FFmpegMetadata', 'add_metadata': True}
-                            ])
-                        elif target_ext == 'wav':
-                            postprocessors.extend([
-                                {'key': 'FFmpegExtractAudio', 'preferredcodec': 'wav'}
-                            ])
-                        ydl_track_opts['postprocessors'] = postprocessors
+                            ydl_track_opts = {
+                                "format": "bestaudio/best",
+                                "outtmpl": os.path.join(job_folder, f"{idx+1:02d} - %(title)s.%(ext)s"),
+                                "quiet": True,
+                                "no_warnings": True,
+                                "ffmpeg_location": FFMPEG_EXE,
+                                "writethumbnail": True,
+                            }
+                            postprocessors = []
+                            if target_ext == 'mp3':
+                                postprocessors.extend([
+                                    {'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '320'},
+                                    {'key': 'FFmpegMetadata', 'add_metadata': True},
+                                    {'key': 'EmbedThumbnail', 'already_have_thumbnail': False}
+                                ])
+                            elif target_ext == 'flac':
+                                postprocessors.extend([
+                                    {'key': 'FFmpegExtractAudio', 'preferredcodec': 'flac'},
+                                    {'key': 'FFmpegMetadata', 'add_metadata': True}
+                                ])
+                            elif target_ext == 'm4a':
+                                postprocessors.extend([
+                                    {'key': 'FFmpegExtractAudio', 'preferredcodec': 'm4a', 'preferredquality': '256'},
+                                    {'key': 'FFmpegMetadata', 'add_metadata': True}
+                                ])
+                            elif target_ext == 'wav':
+                                postprocessors.extend([
+                                    {'key': 'FFmpegExtractAudio', 'preferredcodec': 'wav'}
+                                ])
+                            ydl_track_opts['postprocessors'] = postprocessors
 
-                        try:
-                            with yt_dlp.YoutubeDL(ydl_track_opts) as ydl_t:
-                                ydl_t.download([t_url])
-                        except Exception as te:
-                            print(f"[!] Error downloading SoundCloud track {t_title}: {te}")
+                            try:
+                                with yt_dlp.YoutubeDL(ydl_track_opts) as ydl_t:
+                                    ydl_t.download([t_url])
+                            except Exception as te:
+                                print(f"[!] Error downloading SoundCloud track {t_title}: {te}")
 
-                    out_files = [os.path.join(job_folder, f) for f in os.listdir(job_folder) if f.endswith(f".{target_ext}")]
-                    if not out_files:
-                        raise Exception("Không tải được bài hát nào từ danh sách SoundCloud.")
+                        out_files = [os.path.join(job_folder, f) for f in os.listdir(job_folder) if f.endswith(f".{target_ext}")]
+                        if not out_files:
+                            raise Exception("Không tải được bài hát nào từ danh sách SoundCloud.")
 
-                    zip_name = format_media_filename(playlist_title, "zip")
-                    zip_path = os.path.join(job_folder, zip_name)
-                    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                        for f in out_files:
-                            zipf.write(f, os.path.basename(f))
+                        zip_name = format_media_filename(playlist_title, "zip")
+                        zip_path = os.path.join(job_folder, zip_name)
+                        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                            for f in out_files:
+                                zipf.write(f, os.path.basename(f))
 
-                    JOBS[job_id].update({
-                        "percent": 100,
-                        "finished": True,
-                        "status": "Hoàn tất toàn bộ danh sách SoundCloud!",
-                        "filename": zip_name,
-                        "filepath": zip_path,
-                        "download_url": f"/api/file/{job_id}"
-                    })
-                    return
+                        JOBS[job_id].update({
+                            "percent": 100,
+                            "finished": True,
+                            "status": f"Hoàn tất! Đã tải và đóng gói {len(out_files)} bài hát.",
+                            "filename": zip_name,
+                            "filepath": zip_path,
+                            "download_url": f"/api/file/{job_id}"
+                        })
+                        return
 
             # Single track SoundCloud download
             JOBS[job_id]["status"] = "Đang tải bài hát SoundCloud chất lượng cao (320kbps)..."
@@ -1997,27 +2018,57 @@ def download_worker(job_id, payload):
                 if not coll_info:
                     raise Exception("Không thể đọc danh sách bài hát từ Spotify.")
 
-                all_tracks = coll_info["tracks"]
-                targets = [all_tracks[i] for i in selected_tracks if i < len(all_tracks)] if selected_tracks else all_tracks[:10]
+                all_tracks = coll_info.get("tracks", [])
+                album_title = coll_info.get("title", "Spotify Album")
+                album_author = coll_info.get("author", "Spotify Artist")
+                album_cover = coll_info.get("cover")
+
+                # Prefer exact selected_items from frontend, fallback to selected_tracks indices
+                if selected_items and isinstance(selected_items, list):
+                    targets = selected_items
+                elif selected_tracks:
+                    targets = [all_tracks[i] for i in selected_tracks if i < len(all_tracks)]
+                else:
+                    targets = all_tracks[:10]
+
+                if not targets:
+                    raise Exception("Không tìm thấy bài hát nào được chọn để tải.")
+
+                total_t = len(targets)
+                target_ext = req_format if req_format in ['mp3', 'flac', 'm4a', 'wav'] else 'mp3'
+
+                # Pre-fetch cover bytes for tagging
+                cover_bytes = None
+                if album_cover:
+                    try:
+                        c_resp = requests.get(album_cover, headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+                        if c_resp.status_code == 200:
+                            cover_bytes = c_resp.content
+                    except Exception as ce:
+                        print(f"[!] Spotify collection cover fetch error: {ce}")
 
                 downloaded_files = []
-                total_t = len(targets)
 
                 for idx, t in enumerate(targets):
-                    JOBS[job_id]["status"] = f"Đang đối soát bài {idx+1}/{total_t}: {t['title']}..."
-                    JOBS[job_id]["percent"] = int(((idx) / total_t) * 90) + 5
-                    
+                    t_title = t.get('title') or f"Track {idx+1}"
+                    t_author = t.get('author') or album_author
+                    t_dur = t.get('duration', 0)
+
+                    JOBS[job_id]["status"] = f"Đang đối soát bản thu ({idx+1}/{total_t}): {t_title} - {t_author}..."
+                    JOBS[job_id]["percent"] = int(((idx) / total_t) * 85) + 5
+
                     best_source_url = find_exact_spotify_audio_match(
-                        t['title'],
-                        t.get('author', ''),
-                        t.get('duration', 0)
+                        t_title,
+                        t_author,
+                        t_dur
                     )
 
-                    target_ext = req_format if req_format in ['mp3', 'flac', 'm4a'] else 'mp3'
+                    t_tag = f"sp_{idx+1:02d}_{uuid.uuid4().hex[:6]}"
+                    raw_template = os.path.join(job_folder, f"{t_tag}.%(ext)s")
 
                     ydl_opts = apply_youtube_opts({
                         "format": "bestaudio/best",
-                        "outtmpl": os.path.join(job_folder, f"{idx+1}_{sanitize_filename(t['title'])}.%(ext)s"),
+                        "outtmpl": raw_template,
                         "quiet": True,
                         "no_warnings": True,
                         "ffmpeg_location": FFMPEG_EXE,
@@ -2027,26 +2078,107 @@ def download_worker(job_id, payload):
                             'preferredquality': '320' if target_ext == 'mp3' else None,
                         }]
                     }, is_youtube=True)
+
                     try:
                         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                             ydl.download([best_source_url])
                     except Exception as e:
-                        print(f"[!] Error on track {t['title']}: {e}")
+                        print(f"[!] Error on track {t_title}: {e}")
 
-                out_files = [os.path.join(job_folder, f) for f in os.listdir(job_folder) if f.endswith(f".{target_ext}")]
-                if not out_files:
-                    raise Exception("Không tải được bài hát nào.")
+                    # Locate downloaded audio file
+                    expected_file = os.path.join(job_folder, f"{t_tag}.{target_ext}")
+                    if not os.path.exists(expected_file):
+                        cands = [os.path.join(job_folder, f) for f in os.listdir(job_folder) if f.startswith(t_tag) and f.endswith(f".{target_ext}")]
+                        if cands:
+                            expected_file = cands[0]
 
-                zip_name = format_media_filename(coll_info['title'], "zip")
+                    if os.path.exists(expected_file):
+                        # Inject high-res Metadata & ID3 tags
+                        if target_ext == 'mp3':
+                            try:
+                                audio = ID3(expected_file)
+                            except:
+                                audio = ID3()
+                            audio.add(TIT2(encoding=3, text=t_title))
+                            audio.add(TPE1(encoding=3, text=t_author))
+                            audio.add(TALB(encoding=3, text=album_title))
+                            if cover_bytes:
+                                audio.add(APIC(encoding=3, mime='image/jpeg', type=3, desc='Cover', data=cover_bytes))
+                            audio.save(expected_file, v2_version=3)
+                        elif target_ext == 'flac':
+                            try:
+                                audio = FLAC(expected_file)
+                                audio["title"] = t_title
+                                audio["artist"] = t_author
+                                audio["album"] = album_title
+                                if cover_bytes:
+                                    pic = Picture()
+                                    pic.type = 3
+                                    pic.mime = 'image/jpeg'
+                                    pic.desc = 'Front Cover'
+                                    pic.data = cover_bytes
+                                    audio.add_picture(pic)
+                                audio.save()
+                            except Exception as fe:
+                                print(f"[!] FLAC tag error: {fe}")
+                        elif target_ext == 'm4a':
+                            try:
+                                audio = MP4(expected_file)
+                                audio["\xa9nam"] = t_title
+                                audio["\xa9ART"] = t_author
+                                audio["\xa9alb"] = album_title
+                                if cover_bytes:
+                                    audio["covr"] = [MP4Cover(cover_bytes, imageformat=MP4Cover.FORMAT_JPEG)]
+                                audio.save()
+                            except Exception as me:
+                                print(f"[!] M4A tag error: {me}")
+
+                        # Clean Renaming
+                        if total_t == 1:
+                            clean_filename = format_media_filename(f"{t_author} - {t_title}", target_ext)
+                        else:
+                            clean_filename = f"{idx+1:02d}. {sanitize_filename(t_author)} - {sanitize_filename(t_title)}.{target_ext}"
+
+                        renamed_dest = os.path.join(job_folder, clean_filename)
+                        if os.path.exists(renamed_dest):
+                            try:
+                                os.remove(renamed_dest)
+                            except Exception:
+                                pass
+                        try:
+                            os.rename(expected_file, renamed_dest)
+                            downloaded_files.append(renamed_dest)
+                        except Exception as rn_err:
+                            print(f"[!] Rename error: {rn_err}")
+                            downloaded_files.append(expected_file)
+
+                if not downloaded_files:
+                    raise Exception("Không tải được bài hát nào đã chọn.")
+
+                # If single track selected, return file directly (NO ZIP)
+                if len(downloaded_files) == 1:
+                    single_file = downloaded_files[0]
+                    JOBS[job_id].update({
+                        "percent": 100,
+                        "finished": True,
+                        "status": f"Hoàn tất tải bài hát: {os.path.basename(single_file)}",
+                        "filename": os.path.basename(single_file),
+                        "filepath": single_file,
+                        "download_url": f"/api/file/{job_id}"
+                    })
+                    return
+
+                # If multiple tracks selected, package into ZIP
+                zip_name = format_media_filename(album_title, "zip")
                 zip_path = os.path.join(job_folder, zip_name)
                 with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
-                    for f in out_files:
+                    for f in downloaded_files:
                         zipf.write(f, os.path.basename(f))
 
                 JOBS[job_id].update({
                     "percent": 100,
                     "finished": True,
-                    "status": "Hoàn tất toàn bộ danh sách phát!",
+                    "status": f"Hoàn tất! Đã tải và đóng gói {len(downloaded_files)} bài hát.",
                     "filename": zip_name,
                     "filepath": zip_path,
                     "download_url": f"/api/file/{job_id}"
@@ -2576,6 +2708,123 @@ def download_worker(job_id, payload):
 
         # CASE 2: YOUTUBE DOWNLOAD (VIDEO OR AUDIO)
         elif platform == "youtube":
+            # Check if this is a playlist request with selected items
+            if selected_items or selected_tracks:
+                yt_targets = []
+                if selected_items and isinstance(selected_items, list):
+                    yt_targets = selected_items
+                else:
+                    try:
+                        ydl_flat = {
+                            "quiet": True,
+                            "extract_flat": "in_playlist",
+                            "playlist_items": "1-100",
+                            "skip_download": True
+                        }
+                        p_info = extract_info_safe(ydl_flat, url, download=False)
+                        p_entries = p_info.get("entries", [])
+                        yt_targets = [p_entries[i] for i in selected_tracks if i < len(p_entries)]
+                    except Exception as pe:
+                        print(f"[!] Error extracting playlist targets: {pe}")
+                        yt_targets = []
+
+                if yt_targets:
+                    # If user chose exactly 1 video/song from the playlist:
+                    if len(yt_targets) == 1:
+                        single_target = yt_targets[0]
+                        target_url = single_target.get("url")
+                        if not target_url and single_target.get("id"):
+                            target_url = f"https://www.youtube.com/watch?v={single_target['id']}"
+                        if target_url:
+                            url = target_url  # Fall through to single video download below!
+                    else:
+                        # Multiple tracks selected in YouTube playlist -> download each and ZIP
+                        total_yt = len(yt_targets)
+                        dl_files = []
+                        for idx, item in enumerate(yt_targets):
+                            t_id = item.get("id")
+                            t_u = item.get("url") or (f"https://www.youtube.com/watch?v={t_id}" if t_id else None)
+                            if not t_u:
+                                continue
+                            t_title = item.get("title") or f"Track_{idx+1}"
+                            JOBS[job_id]["status"] = f"Đang tải ({idx+1}/{total_yt}): {t_title}..."
+                            JOBS[job_id]["percent"] = int((idx / total_yt) * 85) + 5
+
+                            t_tag = f"yt_{idx+1:02d}_{uuid.uuid4().hex[:6]}"
+                            raw_out = os.path.join(job_folder, f"{t_tag}.%(ext)s")
+
+                            ydl_t_opts = apply_youtube_opts({
+                                "outtmpl": raw_out,
+                                "quiet": True,
+                                "no_warnings": True,
+                                "ffmpeg_location": FFMPEG_EXE
+                            }, is_youtube=True)
+
+                            if mode == "audio":
+                                target_ext = req_format if req_format in ['mp3', 'flac', 'm4a', 'wav'] else 'mp3'
+                                ydl_t_opts["format"] = "bestaudio/best"
+                                if target_ext == "mp3":
+                                    ydl_t_opts["writethumbnail"] = True
+                                    ydl_t_opts["postprocessors"] = [
+                                        {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", "preferredquality": "320"},
+                                        {"key": "FFmpegMetadata", "add_metadata": True},
+                                        {"key": "EmbedThumbnail", "already_have_thumbnail": False}
+                                    ]
+                                else:
+                                    ydl_t_opts["postprocessors"] = [
+                                        {"key": "FFmpegExtractAudio", "preferredcodec": target_ext},
+                                        {"key": "FFmpegMetadata", "add_metadata": True}
+                                    ]
+                            else:  # mode == "video"
+                                target_ext = "mp4"
+                                height = int(quality) if quality.isdigit() else 1080
+                                ydl_t_opts["format"] = f"bestvideo[height<={height}]+bestaudio/best[height<={height}]/best"
+                                ydl_t_opts["merge_output_format"] = "mp4"
+                                ydl_t_opts["postprocessors"] = [{"key": "FFmpegMetadata", "add_metadata": True}]
+
+                            try:
+                                with yt_dlp.YoutubeDL(ydl_t_opts) as ydl_inst:
+                                    ydl_inst.download([t_u])
+                            except Exception as e:
+                                print(f"[!] YouTube playlist track download error: {e}")
+
+                            # Find the downloaded file
+                            found = [os.path.join(job_folder, f) for f in os.listdir(job_folder) if f.startswith(t_tag) and f.endswith(f".{target_ext}")]
+                            if found:
+                                safe_t = sanitize_filename(t_title) or f"Track_{idx+1}"
+                                final_t_name = f"{idx+1:02d}. {safe_t}.{target_ext}"
+                                final_t_path = os.path.join(job_folder, final_t_name)
+                                if os.path.exists(final_t_path):
+                                    try:
+                                        os.remove(final_t_path)
+                                    except Exception:
+                                        pass
+                                try:
+                                    os.rename(found[0], final_t_path)
+                                    dl_files.append(final_t_path)
+                                except Exception as rne:
+                                    print(f"[!] Rename error: {rne}")
+                                    dl_files.append(found[0])
+
+                        if not dl_files:
+                            raise Exception("Không tải được video/bài hát nào trong danh sách.")
+
+                        p_zip_name = format_media_filename(custom_title or "YouTube Playlist", "zip")
+                        p_zip_path = os.path.join(job_folder, p_zip_name)
+                        with zipfile.ZipFile(p_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                            for f in dl_files:
+                                zipf.write(f, os.path.basename(f))
+
+                        JOBS[job_id].update({
+                            "percent": 100,
+                            "finished": True,
+                            "status": f"Hoàn tất! Đã tải và đóng gói {len(dl_files)} mục.",
+                            "filename": p_zip_name,
+                            "filepath": p_zip_path,
+                            "download_url": f"/api/file/{job_id}"
+                        })
+                        return
+
             out_template = os.path.join(job_folder, "QuocTinMedia - %(title)s.%(ext)s")
 
             ydl_opts = apply_youtube_opts({

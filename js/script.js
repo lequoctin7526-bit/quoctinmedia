@@ -771,6 +771,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     let selectedTrackIndices = [];
+    let selectedTracksData = [];
     if (currentMediaData.is_playlist && currentMediaData.tracks) {
       const checked = playlistItems.querySelectorAll('input[type="checkbox"]:checked');
       if (checked.length === 0) {
@@ -778,6 +779,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
       }
       selectedTrackIndices = Array.from(checked).map(cb => parseInt(cb.value, 10));
+      selectedTracksData = selectedTrackIndices
+        .map(i => currentMediaData.tracks[i])
+        .filter(Boolean);
     }
 
     progressBox.classList.remove('hidden');
@@ -795,6 +799,7 @@ document.addEventListener('DOMContentLoaded', () => {
         format: currentMode === 'audio' ? currentAudioFormat : currentVideoFormat,
         quality: currentMode === 'audio' ? currentAudioQuality : currentVideoQuality,
         selected_tracks: selectedTrackIndices,
+        selected_items: selectedTracksData,
         title: currentMediaData.title
       };
 
