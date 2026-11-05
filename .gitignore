@@ -12,11 +12,6 @@ ENV/
 downloads/
 uploads/
 
-# User Cookies & Sensitive Credentials
-cookies.txt
-youtube_cookies.txt
-cookie.txt
-
 # OS / Editor
 .DS_Store
 Thumbs.db
