@@ -172,17 +172,29 @@ body::before {
 .brand-icon {
   position: relative;
   width: 52px;
-  height: 48px;
-  width: 48px;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(135deg, #ff334b 0%, #a855f7 50%, #1ed760 100%);
+  height: 52px;
+  border-radius: 14px;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #fff;
-  font-size: 22px;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.4), 0 0 20px rgba(168, 85, 247, 0.35);
   flex-shrink: 0;
+  overflow: hidden;
+  transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.25s ease;
+}
+
+.brand-icon:hover {
+  transform: scale(1.05) rotate(2deg);
+  box-shadow: 0 6px 24px rgba(236, 72, 153, 0.5), 0 0 25px rgba(99, 102, 241, 0.5);
+}
+
+.brand-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 14px;
+  display: block;
 }
 
 .brand-pulse {
@@ -2541,16 +2553,25 @@ body::before {
 }
 
 .intro-logo-core {
-  width: 80px;
-  height: 80px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #4f46e5, #9333ea, #ec4899);
+  width: 84px;
+  height: 84px;
+  border-radius: 20px;
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
-  box-shadow: 0 0 35px rgba(99, 102, 241, 0.65), inset 0 0 15px rgba(255, 255, 255, 0.25);
+  overflow: hidden;
+  box-shadow: 0 0 35px rgba(99, 102, 241, 0.65), 0 0 20px rgba(236, 72, 153, 0.45);
   animation: introCorePulse 2.5s ease-in-out infinite alternate;
+}
+
+.intro-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 20px;
+  display: block;
 }
 
 @keyframes introCorePulse {
