@@ -3203,16 +3203,21 @@ if __name__ == "__main__":
     print("  Audio: MP3 320kbps / FLAC / Opus Lossless")
     print("  Video: MP4 4K / 2K / 1080p Full HD")
     print("=====================================================")
-    from werkzeug.serving import make_server
-    try:
-        # Dual-stack socket (binds both IPv4 and IPv6 on Windows)
-        s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
-        s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
-        s.bind(('::', PORT))
-        s.listen(128)
-        server = make_server('::', PORT, app, fd=s.fileno(), threaded=True)
-        print(f"[*] Server running with Dual-Stack on port {PORT} (IPv4 + IPv6 localhost)")
-        server.serve_forever()
-    except Exception as e:
-        print(f"[!] Dual-stack fallback: {e}")
+    if os.name == 'nt':
+        from werkzeug.serving import make_server
+        try:
+            # Dual-stack socket (binds both IPv4 and IPv6 on Windows)
+            s = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            s.setsockopt(socket.IPPROTO_IPV6, socket.IPV6_V6ONLY, 0)
+            s.bind(('::', PORT))
+            s.listen(128)
+            server = make_server('::', PORT, app, fd=s.fileno(), threaded=True)
+            print(f"[*] Server running with Dual-Stack on port {PORT} (IPv4 + IPv6 localhost)")
+            server.serve_forever()
+        except Exception as e:
+            print(f"[!] Dual-stack fallback: {e}")
+            app.run(host="0.0.0.0", port=PORT, threaded=True)
+    else:
+        # On Linux / Docker / Render, bind directly to 0.0.0.0 for instant HTTP routing
+        print(f"[*] Server running on 0.0.0.0:{PORT} (Production Linux / Render)")
         app.run(host="0.0.0.0", port=PORT, threaded=True)
