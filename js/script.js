@@ -1156,4 +1156,82 @@ document.addEventListener('DOMContentLoaded', () => {
       closeDonateModal();
     }
   });
+
+  // ==================== CINEMATIC INTRO SPLASH ====================
+  const introOverlay = document.getElementById('appIntroOverlay');
+  const introProgressBar = document.getElementById('introProgressBar');
+  const introStatusText = document.getElementById('introStatusText');
+  const introPercent = document.getElementById('introPercent');
+  const introSkipBtn = document.getElementById('introSkipBtn');
+
+  if (introOverlay) {
+    let currentP = 0;
+    let introFinished = false;
+
+    function finishIntro() {
+      if (introFinished) return;
+      introFinished = true;
+      if (introProgressBar) introProgressBar.style.width = '100%';
+      if (introPercent) introPercent.textContent = '100%';
+      if (introStatusText) introStatusText.textContent = 'Hệ thống đã sẵn sàng!';
+      setTimeout(() => {
+        introOverlay.classList.add('intro-dismissed');
+        setTimeout(() => {
+          introOverlay.style.display = 'none';
+        }, 650);
+      }, 250);
+    }
+
+    if (introSkipBtn) {
+      introSkipBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        finishIntro();
+      });
+    }
+
+    introOverlay.addEventListener('click', () => {
+      finishIntro();
+    });
+
+    const statusSteps = [
+      { at: 15, text: 'Khởi tạo giao diện Studio...' },
+      { at: 40, text: 'Nạp bộ giải mã YouTube & Spotify...' },
+      { at: 70, text: 'Kích hoạt công nghệ âm thanh 320kbps...' },
+      { at: 95, text: 'Chào mừng bạn đến với Quốc Tín Media Pro!' }
+    ];
+
+    const startTime = performance.now();
+    const duration = 1400; // 1.4s total duration for a snappy, beautiful entrance
+
+    function animateIntro(now) {
+      if (introFinished) return;
+      const elapsed = now - startTime;
+      const progress = Math.min(1, elapsed / duration);
+
+      // Smooth easeOutCubic curve
+      const eased = 1 - Math.pow(1 - progress, 3);
+      currentP = Math.min(100, Math.floor(eased * 100));
+
+      if (introProgressBar) introProgressBar.style.width = `${currentP}%`;
+      if (introPercent) introPercent.textContent = `${currentP}%`;
+
+      // Update status text
+      for (let i = statusSteps.length - 1; i >= 0; i--) {
+        if (currentP >= statusSteps[i].at) {
+          if (introStatusText && introStatusText.textContent !== statusSteps[i].text) {
+            introStatusText.textContent = statusSteps[i].text;
+          }
+          break;
+        }
+      }
+
+      if (progress < 1) {
+        requestAnimationFrame(animateIntro);
+      } else {
+        finishIntro();
+      }
+    }
+
+    requestAnimationFrame(animateIntro);
+  }
 });

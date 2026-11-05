@@ -11,6 +11,64 @@
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 </head>
 <body>
+  <!-- Cinematic Cyber Intro Splash Screen -->
+  <div id="appIntroOverlay" class="intro-overlay">
+    <div class="intro-backdrop-mesh"></div>
+    <div class="intro-glow-sphere"></div>
+    
+    <div class="intro-content">
+      <!-- Animated Logo Sphere with Orbiting Neon Rings -->
+      <div class="intro-logo-container">
+        <div class="intro-orbit-ring ring-1"></div>
+        <div class="intro-orbit-ring ring-2"></div>
+        <div class="intro-logo-core">
+          <i class="fa-solid fa-bolt intro-bolt"></i>
+          <div class="intro-core-glow"></div>
+        </div>
+      </div>
+
+      <!-- Typography -->
+      <div class="intro-title-wrapper">
+        <h1 class="intro-main-title">
+          <span class="intro-title-plain">QUỐC TÍN</span>
+          <span class="intro-title-gradient">MEDIA</span>
+          <span class="intro-badge-pro">PRO</span>
+        </h1>
+        <div class="intro-sub-text">
+          <span>Hệ Thống Tải Nhạc & Video Chuẩn Studio</span>
+        </div>
+      </div>
+
+      <!-- Equalizer Wave Animation -->
+      <div class="intro-equalizer">
+        <span class="eq-bar eq-1"></span>
+        <span class="eq-bar eq-2"></span>
+        <span class="eq-bar eq-3"></span>
+        <span class="eq-bar eq-4"></span>
+        <span class="eq-bar eq-5"></span>
+        <span class="eq-bar eq-6"></span>
+        <span class="eq-bar eq-7"></span>
+      </div>
+
+      <!-- Futuristic Progress Indicator -->
+      <div class="intro-progress-wrapper">
+        <div class="intro-progress-track">
+          <div class="intro-progress-bar" id="introProgressBar"></div>
+        </div>
+        <div class="intro-status-row">
+          <span class="intro-status-text" id="introStatusText">Khởi tạo giao diện Studio...</span>
+          <span class="intro-percent" id="introPercent">0%</span>
+        </div>
+      </div>
+
+      <!-- Quick Skip Button -->
+      <button type="button" class="intro-skip-btn" id="introSkipBtn" title="Bỏ qua intro">
+        <span>Vào trang ngay</span>
+        <i class="fa-solid fa-angles-right"></i>
+      </button>
+    </div>
+  </div>
+
   <div class="ambient-glow glow-1"></div>
   <div class="ambient-glow glow-2"></div>
   <div class="ambient-glow glow-3"></div>
