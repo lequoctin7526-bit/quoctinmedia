@@ -1156,35 +1156,6 @@ def get_tiktok_info(url):
 def index():
     return send_file(os.path.join(BASE_DIR, "index.html"))
 
-@app.route("/api/debug_test")
-def debug_test():
-    target = request.args.get("v", "CgJSDXTS6ws")
-    test_url = f"https://www.youtube.com/watch?v={target}"
-    
-    # Test formats with web + cookie
-    c = get_cookie_file()
-    opts = {
-        "quiet": True,
-        "no_warnings": True,
-        "skip_download": True,
-        "ignore_no_formats_error": True
-    }
-    if c:
-        opts["cookiefile"] = c
-        
-    try:
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(test_url, download=False)
-            formats = info.get("formats", [])
-            fmt_list = [{"id": f.get("format_id"), "ext": f.get("ext"), "vcodec": f.get("vcodec"), "acodec": f.get("acodec"), "abr": f.get("abr"), "has_url": bool(f.get("url"))} for f in formats]
-            return jsonify({
-                "title": info.get("title"),
-                "total_formats": len(formats),
-                "formats": fmt_list
-            })
-    except Exception as e:
-        return jsonify({"error": str(e)})
-
 @app.route("/api/health")
 def health():
     cookie_p = get_cookie_file()
