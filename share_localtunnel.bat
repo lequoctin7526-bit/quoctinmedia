@@ -1,18 +1,18 @@
 @echo off
 chcp 65001 > nul
-title Chia Sẻ Web Với Tên Miền Tự Chọn (Localtunnel)
+title Chia S? Web V?i T?n Mi?n T? Ch?n (Localtunnel)
 
 echo ========================================================
-echo   Quốc Tín Media Pro - Tự Đặt Tên Miền Miễn Phí
+echo   Qu?c T?n Media Pro - T? ??t T?n Mi?n Mi?n Ph?
 echo ========================================================
 echo.
 set "DEFAULT_NAME=quoctinmedia"
-set /p SUBDOMAIN="Nhập tên miền bạn muốn (nhấn Enter để dùng '%DEFAULT_NAME%'): "
+set /p SUBDOMAIN="Nh?p t?n mi?n b?n mu?n (nh?n Enter ?? d?ng '%DEFAULT_NAME%'): "
 if "%SUBDOMAIN%"=="" set "SUBDOMAIN=%DEFAULT_NAME%"
 
 echo.
-echo [*] Đang thiết lập đường dẫn cố định...
-echo [*] Link trang web của bạn sẽ là: https://%SUBDOMAIN%.loca.lt
+echo [*] ?ang thi?t l?p ???ng d?n c? ??nh...
+echo [*] Link trang web c?a b?n s? l?: https://%SUBDOMAIN%.loca.lt
 echo.
 
 npx.cmd localtunnel --port 5500 --subdomain %SUBDOMAIN%
