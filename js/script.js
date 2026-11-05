@@ -397,6 +397,135 @@ document.addEventListener('DOMContentLoaded', () => {
   // Initial check on load in case browser retained input text
   toggleClearBtn();
 
+  // ==================== CORNER TOAST NOTIFICATIONS ====================
+  const toastContainer = document.getElementById('toastContainer');
+
+  function showToast(msg, type = 'info', title = null, isBotError = false, duration = null) {
+    if (!toastContainer) return null;
+
+    let defaultTitle = 'Thông báo';
+    let iconClass = 'fa-solid fa-circle-info';
+    let autoDismissTime = 4500;
+
+    if (type === 'success') {
+      defaultTitle = 'Thành công';
+      iconClass = 'fa-solid fa-circle-check';
+      autoDismissTime = 4000;
+    } else if (type === 'error') {
+      defaultTitle = isBotError ? 'Bảo vệ YouTube' : 'Có lỗi xảy ra';
+      iconClass = 'fa-solid fa-circle-exclamation';
+      autoDismissTime = 8000;
+    } else if (type === 'warning') {
+      defaultTitle = 'Lưu ý';
+      iconClass = 'fa-solid fa-triangle-exclamation';
+      autoDismissTime = 6000;
+    } else if (type === 'loading') {
+      defaultTitle = 'Đang xử lý';
+      iconClass = 'fa-solid fa-spinner fa-spin';
+      autoDismissTime = 0;
+    }
+
+    const toastTitle = title || defaultTitle;
+    if (duration !== null) autoDismissTime = duration;
+
+    const toast = document.createElement('div');
+    toast.className = `toast-card toast-${type}`;
+    toast.setAttribute('role', 'alert');
+
+    let botActionHtml = '';
+    if (isBotError) {
+      botActionHtml = `
+        <div class="toast-action-row">
+          <button type="button" class="toast-btn-action" id="toastCookieBtn">
+            <i class="fa-solid fa-cookie-bite"></i> Cài đặt Cookie ngay
+          </button>
+        </div>`;
+    }
+
+    toast.innerHTML = `
+      <div class="toast-glow"></div>
+      <div class="toast-icon-wrap">
+        <i class="${iconClass}"></i>
+      </div>
+      <div class="toast-body">
+        <div class="toast-header-row">
+          <span class="toast-title">${escapeHtml(toastTitle)}</span>
+          <button type="button" class="toast-close" title="Đóng">&times;</button>
+        </div>
+        <div class="toast-message">${escapeHtml(msg)}${botActionHtml}</div>
+      </div>
+      ${autoDismissTime > 0 ? `<div class="toast-progress-bar" style="animation-duration: ${autoDismissTime}ms"></div>` : ''}
+    `;
+
+    toastContainer.appendChild(toast);
+
+    const closeBtn = toast.querySelector('.toast-close');
+    let dismissTimeout = null;
+    let isDismissed = false;
+
+    function dismiss() {
+      if (isDismissed) return;
+      isDismissed = true;
+      if (dismissTimeout) clearTimeout(dismissTimeout);
+      toast.classList.add('dismissed');
+      setTimeout(() => {
+        if (toast.parentNode) toast.parentNode.removeChild(toast);
+      }, 350);
+    }
+
+    if (closeBtn) {
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dismiss();
+      });
+    }
+
+    const cookieBtn = toast.querySelector('#toastCookieBtn');
+    if (cookieBtn) {
+      cookieBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        dismiss();
+        if (typeof openCookieModal === 'function') openCookieModal();
+      });
+    }
+
+    if (autoDismissTime > 0) {
+      let remaining = autoDismissTime;
+      let start = Date.now();
+
+      const startTimer = () => {
+        start = Date.now();
+        dismissTimeout = setTimeout(dismiss, remaining);
+      };
+
+      const pauseTimer = () => {
+        if (dismissTimeout) {
+          clearTimeout(dismissTimeout);
+          remaining -= Date.now() - start;
+        }
+        const bar = toast.querySelector('.toast-progress-bar');
+        if (bar) bar.style.animationPlayState = 'paused';
+      };
+
+      const resumeTimer = () => {
+        startTimer();
+        const bar = toast.querySelector('.toast-progress-bar');
+        if (bar) bar.style.animationPlayState = 'running';
+      };
+
+      toast.addEventListener('mouseenter', pauseTimer);
+      toast.addEventListener('mouseleave', resumeTimer);
+      startTimer();
+    }
+
+    return { dismiss, element: toast };
+  }
+
+  function showAlert(msg, type = 'info', isBotError = false, title = null) {
+    if (!msg) return;
+    showToast(msg, type, title, isBotError);
+  }
+
   // Paste button
   pasteBtn.addEventListener('click', async () => {
     try {
@@ -404,11 +533,20 @@ document.addEventListener('DOMContentLoaded', () => {
       if (text) {
         urlInput.value = text.trim();
         urlInput.dispatchEvent(new Event('input'));
-        showAlert('Đã dán liên kết từ bộ nhớ tạm!', 'info');
+        showAlert('Đã dán liên kết thành công!', 'success', false, 'Dán liên kết');
       }
     } catch (err) {
-      showAlert('Không thể truy cập Clipboard. Vui lòng bấm Ctrl+V để dán.', 'error');
+      showAlert('Không thể truy cập Clipboard. Vui lòng bấm Ctrl+V để dán.', 'error', false, 'Lỗi Clipboard');
     }
+  });
+
+  // Listen to keyboard Ctrl+V / paste in urlInput
+  urlInput.addEventListener('paste', () => {
+    setTimeout(() => {
+      if (urlInput.value.trim()) {
+        showAlert('Đã dán liên kết thành công!', 'success', false, 'Dán liên kết');
+      }
+    }, 50);
   });
 
   // Quick Samples
@@ -420,30 +558,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Alert Close
-  alertClose.addEventListener('click', () => {
-    statusAlert.classList.add('hidden');
-  });
-
-  function showAlert(msg, type = 'info', isBotError = false) {
-    statusAlert.className = `status-alert ${type}`;
-    if (isBotError) {
-      alertMessage.innerHTML = `${escapeHtml(msg)} <div style="margin-top:10px;"><button type="button" id="alertCookieBtn" class="cookie-nav-btn" style="background:#2563eb;color:#fff;border:none;"><i class="fa-solid fa-cookie-bite"></i> Cài đặt Cookie YouTube ngay</button></div>`;
-      const btn = document.getElementById('alertCookieBtn');
-      if (btn) {
-        btn.addEventListener('click', () => {
-          if (typeof openCookieModal === 'function') openCookieModal();
-        });
-      }
-    } else {
-      alertMessage.textContent = msg;
-    }
-    statusAlert.classList.remove('hidden');
-    if (type !== 'error') {
-      setTimeout(() => {
-        statusAlert.classList.add('hidden');
-      }, 6000);
-    }
+  // Alert Close (Legacy statusAlert backward compatibility)
+  if (alertClose && statusAlert) {
+    alertClose.addEventListener('click', () => {
+      statusAlert.classList.add('hidden');
+    });
   }
 
   // Mode Toggle (Audio / Video / Thumbnail)
@@ -547,7 +666,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.body.appendChild(hiddenIframe);
     setTimeout(() => hiddenIframe.remove(), 10000);
 
-    showAlert(`Đang tải ảnh Thumbnail (${format.toUpperCase()}) chất lượng cao nhất...`, 'success');
+    showAlert(`Đang tải ảnh Thumbnail (${format.toUpperCase()}) chất lượng cao nhất...`, 'success', false, 'Tải Thumbnail');
   }
 
   // Quick Thumbnail Download button on image card
@@ -570,10 +689,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     setFetchLoading(true);
-    statusAlert.classList.add('hidden');
+    if (statusAlert) statusAlert.classList.add('hidden');
     resultContainer.classList.add('hidden');
     progressBox.classList.add('hidden');
     resetAudioPlayer();
+    showAlert('Đang phân tích liên kết, vui lòng chờ trong giây lát...', 'info', false, 'Đang phân tích');
 
     try {
       const response = await apiFetch('/api/info', {
@@ -597,7 +717,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (!response.ok || !data.success) {
         if (data && data.is_bot_error) {
-          showAlert(data.error, 'error', true);
+          showAlert(data.error, 'error', true, 'Bảo vệ YouTube');
           return;
         }
         throw new Error(data.error || 'Không thể lấy thông tin từ liên kết này. Vui lòng kiểm tra lại!');
@@ -606,6 +726,8 @@ document.addEventListener('DOMContentLoaded', () => {
       renderMediaInfo(data);
       resultContainer.classList.remove('hidden');
       resultContainer.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const mediaTitle = data.title || 'Nội dung đa phương tiện';
+      showAlert(`Đã nhận diện: ${mediaTitle.length > 40 ? mediaTitle.slice(0, 37) + '...' : mediaTitle}`, 'success', false, 'Nhận diện thành công');
     } catch (err) {
       console.error(err);
       if (err.message && err.message.includes('Failed to fetch')) {
@@ -790,6 +912,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     updateProgressUI(5, 'Đang gửi yêu cầu đến máy chủ...', '0 KB/s', 'Đang tính toán');
     progressBox.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    showAlert('Đang khởi tạo tiến trình tải xuống...', 'info', false, 'Bắt đầu tải');
 
     try {
       const payload = {
@@ -844,7 +967,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (!data.success) {
           clearInterval(progressPollingInterval);
-          showAlert(data.error || 'Lỗi xử lý file.', 'error');
+          showAlert(data.error || 'Lỗi xử lý file.', 'error', false, 'Tải thất bại');
           downloadBtn.disabled = false;
           return;
         }
@@ -880,7 +1003,7 @@ document.addEventListener('DOMContentLoaded', () => {
             hiddenIframe.src = fullDownloadUrl;
             document.body.appendChild(hiddenIframe);
             setTimeout(() => hiddenIframe.remove(), 10000);
-            showAlert('Đã tải thành công với chất lượng âm thanh cao nhất!', 'success');
+            showAlert(currentMode === 'video' ? 'Đã tải video thành công với độ phân giải cao nhất!' : 'Đã tải bài hát thành công với chất lượng âm thanh cao nhất!', 'success', false, 'Tải thành công');
           }
         }
       } catch (err) {
