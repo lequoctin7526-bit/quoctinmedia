@@ -1,13 +1,13 @@
 @echo off
 chcp 65001 > nul
-title Chia Sẻ Quốc Tín Media Pro Lên Internet (Cloudflare Tunnel)
+title Chia Se Quoc Tin Media Pro Len Internet (Cloudflare Tunnel)
 
 echo ========================================================
-echo   Quốc Tín Media Pro - Chia Sẻ Ra Mạng Internet
+echo   Quoc Tin Media Pro - Chia Se Ra Mang Internet
 echo ========================================================
 echo.
-echo [*] Đang thiết lập đường hầm bảo mật HTTPS...
-echo [*] Vui lòng tìm dòng link có đuôi: .trycloudflare.com bên dưới:
+echo [*] Dang thiet lap duong ham bao mat HTTPS...
+echo [*] Vui long tim dong link co duoi: .trycloudflare.com ben duoi:
 echo.
 
 set "CF_EXE=C:\Program Files (x86)\cloudflared\cloudflared.exe"
@@ -21,4 +21,3 @@ if not exist "%CF_EXE%" (
 "%CF_EXE%" tunnel --url http://127.0.0.1:5500
 
 pause
-

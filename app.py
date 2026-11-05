@@ -872,6 +872,102 @@ def get_zingmp3_track_info(url):
         "url": url
     }
 
+def resolve_tiktok_url(url):
+    """
+    Expands short TikTok links (vt.tiktok.com, vm.tiktok.com) to full canonical URL.
+    """
+    try:
+        if any(d in url.lower() for d in ["vt.tiktok.com", "vm.tiktok.com"]):
+            resp = requests.head(
+                url,
+                allow_redirects=True,
+                timeout=8,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            )
+            if resp.url:
+                return resp.url
+    except Exception as e:
+        print(f"[!] resolve_tiktok_url redirect error: {e}")
+    return url
+
+def get_tiktok_info(url):
+    """
+    Extracts TikTok metadata, no-watermark video stream URL, and audio stream URL.
+    Uses TikWM API as primary engine (fast & no-watermark) with yt-dlp fallback.
+    """
+    resolved_url = resolve_tiktok_url(url)
+
+    # 1. Primary Engine: TikWM API
+    try:
+        resp = requests.get(
+            "https://www.tikwm.com/api/",
+            params={"url": resolved_url, "hd": 1},
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            },
+            timeout=12
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            if data.get("code") == 0 and data.get("data"):
+                d = data["data"]
+                title = d.get("title") or "TikTok Video"
+                title = " ".join(title.split())
+                author_obj = d.get("author") or {}
+                author = author_obj.get("nickname") or author_obj.get("unique_id") or "TikTok Creator"
+
+                video_url = d.get("hdplay") or d.get("play")
+                if video_url and not video_url.startswith("http"):
+                    video_url = f"https://www.tikwm.com{video_url}"
+
+                audio_url = d.get("music")
+                if audio_url and not audio_url.startswith("http"):
+                    audio_url = f"https://www.tikwm.com{audio_url}"
+
+                cover = d.get("cover")
+                if cover and not cover.startswith("http"):
+                    cover = f"https://www.tikwm.com{cover}"
+
+                duration = int(d.get("duration", 0) or 0)
+
+                return {
+                    "title": title,
+                    "author": author,
+                    "duration": duration,
+                    "thumbnail": cover or "",
+                    "video_url": video_url,
+                    "audio_url": audio_url,
+                    "source": "tikwm"
+                }
+    except Exception as e:
+        print(f"[!] TikWM API error: {e}")
+
+    # 2. Fallback Engine: yt-dlp
+    try:
+        ydl_opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "skip_download": True,
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(resolved_url, download=False)
+            if info:
+                title = info.get("title") or "TikTok Video"
+                title = " ".join(title.split())
+                return {
+                    "title": title,
+                    "author": info.get("uploader") or info.get("creator") or "TikTok Creator",
+                    "duration": int(info.get("duration", 0) or 0),
+                    "thumbnail": info.get("thumbnail") or "",
+                    "video_url": None,
+                    "audio_url": None,
+                    "source": "yt-dlp"
+                }
+    except Exception as e:
+        print(f"[!] yt-dlp TikTok fallback error: {e}")
+
+    return None
+
 # ==================== ROUTES ====================
 
 @app.route("/")
@@ -1206,8 +1302,29 @@ def get_info():
         except Exception as e:
             return jsonify({"success": False, "error": f"Lỗi phân tích NhacCuaTui: {str(e)}"}), 400
 
+    # 6. TIKTOK HANDLING
+    elif any(d in lower_url for d in ["tiktok.com", "douyin.com"]):
+        try:
+            info = get_tiktok_info(url)
+            if not info or not info.get("title"):
+                return jsonify({"success": False, "error": "Không thể lấy thông tin video TikTok. Vui lòng kiểm tra lại đường link."}), 400
+
+            return jsonify({
+                "success": True,
+                "platform": "tiktok",
+                "is_playlist": False,
+                "title": info.get("title", "TikTok Video"),
+                "author": info.get("author", "TikTok Creator"),
+                "duration": int(info.get("duration", 0)),
+                "thumbnail": info.get("thumbnail", ""),
+                "url": url,
+                "extra": "TikTok Không Logo & Âm thanh Studio"
+            })
+        except Exception as e:
+            return jsonify({"success": False, "error": f"Lỗi phân tích TikTok: {str(e)}"}), 400
+
     else:
-        return jsonify({"success": False, "error": "Chỉ hỗ trợ liên kết YouTube, Spotify, SoundCloud, Zing MP3 hoặc NhacCuaTui!"}), 400
+        return jsonify({"success": False, "error": "Chỉ hỗ trợ liên kết YouTube, TikTok, Spotify, SoundCloud, Zing MP3 hoặc NhacCuaTui!"}), 400
 
 # ==================== DOWNLOAD WORKER ====================
 
@@ -1225,6 +1342,8 @@ def download_worker(job_id, payload):
         platform = "zingmp3"
     elif any(d in lower_u for d in ["nhaccuatui.com", "nct.vn"]):
         platform = "nhaccuatui"
+    elif any(d in lower_u for d in ["tiktok.com", "douyin.com"]):
+        platform = "tiktok"
     elif not platform:
         platform = "youtube"
 
@@ -1931,6 +2050,232 @@ def download_worker(job_id, payload):
             })
             return
 
+        # CASE 6: TIKTOK DOWNLOAD (NO-LOGO VIDEO & HQ AUDIO)
+        elif platform == "tiktok":
+            tt_info = get_tiktok_info(url)
+            if not tt_info:
+                raise Exception("Không thể trích xuất thông tin video từ TikTok.")
+
+            title = custom_title or tt_info.get("title", "TikTok Video")
+            author = tt_info.get("author", "TikTok Creator")
+
+            if mode == "video":
+                # DOWNLOAD NO-LOGO HD VIDEO (MP4)
+                safe_name = format_media_filename(f"{author} - {title}", "mp4")
+                final_file = os.path.join(job_folder, safe_name)
+                video_url = tt_info.get("video_url")
+                dl_success = False
+
+                if video_url:
+                    JOBS[job_id]["status"] = "Đang tải video TikTok không logo (Full HD)..."
+                    JOBS[job_id]["percent"] = 20
+                    try:
+                        v_resp = requests.get(
+                            video_url,
+                            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                            stream=True,
+                            timeout=45
+                        )
+                        if v_resp.status_code == 200:
+                            total_bytes = int(v_resp.headers.get("content-length", 0))
+                            downloaded_bytes = 0
+                            with open(final_file, "wb") as f_out:
+                                for chunk in v_resp.iter_content(chunk_size=65536):
+                                    if chunk:
+                                        f_out.write(chunk)
+                                        downloaded_bytes += len(chunk)
+                                        if total_bytes > 0:
+                                            pct = min(20 + int((downloaded_bytes / total_bytes) * 70), 92)
+                                            JOBS[job_id]["percent"] = pct
+                            dl_success = os.path.exists(final_file) and os.path.getsize(final_file) > 100000
+                    except Exception as ve:
+                        print(f"[!] TikWM video direct download failed: {ve}")
+                        dl_success = False
+
+                if not dl_success:
+                    JOBS[job_id]["status"] = "Đang tải video TikTok với bộ xử lý dự phòng..."
+                    JOBS[job_id]["percent"] = 35
+                    ydl_opts = {
+                        "format": "bestvideo+bestaudio/best",
+                        "outtmpl": os.path.join(job_folder, "source.%(ext)s"),
+                        "merge_output_format": "mp4",
+                        "ffmpeg_location": FFMPEG_EXE,
+                        "progress_hooks": [progress_hook],
+                        "quiet": True,
+                        "no_warnings": True
+                    }
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([url])
+
+                    src_files = [f for f in os.listdir(job_folder) if f.endswith(('.mp4', '.mkv', '.webm'))]
+                    if not src_files:
+                        raise Exception("Không tải được video TikTok.")
+                    os.rename(os.path.join(job_folder, src_files[0]), final_file)
+
+                JOBS[job_id].update({
+                    "percent": 100,
+                    "finished": True,
+                    "status": "Hoàn tất! Video đã được xóa sạch logo watermark.",
+                    "filename": os.path.basename(final_file),
+                    "filepath": final_file,
+                    "download_url": f"/api/file/{job_id}"
+                })
+                return
+
+            else:
+                # DOWNLOAD AUDIO (MP3 320k, FLAC, M4A, WAV)
+                target_ext = req_format if req_format in ['mp3', 'flac', 'm4a', 'wav'] else 'mp3'
+                raw_audio_file = os.path.join(job_folder, "tiktok_raw_audio.mp3")
+                dl_success = False
+                audio_url = tt_info.get("audio_url")
+
+                if audio_url:
+                    JOBS[job_id]["status"] = f"Đang tải luồng âm thanh gốc TikTok: {title}..."
+                    JOBS[job_id]["percent"] = 25
+                    try:
+                        a_resp = requests.get(
+                            audio_url,
+                            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"},
+                            stream=True,
+                            timeout=30
+                        )
+                        if a_resp.status_code == 200:
+                            with open(raw_audio_file, "wb") as f_out:
+                                for chunk in a_resp.iter_content(chunk_size=32768):
+                                    if chunk:
+                                        f_out.write(chunk)
+                            dl_success = os.path.exists(raw_audio_file) and os.path.getsize(raw_audio_file) > 10000
+                    except Exception as ae:
+                        print(f"[!] TikWM audio direct download failed: {ae}")
+                        dl_success = False
+
+                if not dl_success:
+                    video_url = tt_info.get("video_url")
+                    if video_url:
+                        temp_vid = os.path.join(job_folder, "temp_vid.mp4")
+                        try:
+                            v_resp = requests.get(video_url, headers={"User-Agent": "Mozilla/5.0"}, stream=True, timeout=30)
+                            if v_resp.status_code == 200:
+                                with open(temp_vid, "wb") as f_v:
+                                    for chk in v_resp.iter_content(chunk_size=65536):
+                                        if chk:
+                                            f_v.write(chk)
+                                raw_audio_file = temp_vid
+                                dl_success = True
+                        except Exception:
+                            dl_success = False
+
+                if not dl_success:
+                    JOBS[job_id]["status"] = "Đang trích xuất âm thanh TikTok với bộ xử lý dự phòng..."
+                    JOBS[job_id]["percent"] = 40
+                    ydl_opts = {
+                        "format": "bestaudio/best",
+                        "outtmpl": os.path.join(job_folder, "source.%(ext)s"),
+                        "ffmpeg_location": FFMPEG_EXE,
+                        "progress_hooks": [progress_hook],
+                        "quiet": True,
+                        "no_warnings": True
+                    }
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([url])
+                    src_files = [f for f in os.listdir(job_folder) if not f.endswith(('.temp', '.part', '.ytdl', '.jpg', '.png'))]
+                    if not src_files:
+                        raise Exception("Không trích xuất được âm thanh từ TikTok.")
+                    raw_audio_file = os.path.join(job_folder, src_files[0])
+
+                # Convert using FFmpeg
+                JOBS[job_id]["status"] = f"Đang xử lý âm thanh ({target_ext.upper()}) chuẩn Studio với FFmpeg..."
+                JOBS[job_id]["percent"] = 80
+
+                safe_name = format_media_filename(f"{author} - {title}", target_ext)
+                final_file = os.path.join(job_folder, safe_name)
+
+                cmd = [FFMPEG_EXE or "ffmpeg", "-y", "-i", raw_audio_file]
+                if target_ext == "mp3":
+                    cmd.extend(["-c:a", "libmp3lame", "-b:a", "320k", "-ar", "44100"])
+                elif target_ext == "flac":
+                    cmd.extend(["-c:a", "flac"])
+                elif target_ext == "m4a":
+                    cmd.extend(["-c:a", "aac", "-b:a", "256k"])
+                elif target_ext == "wav":
+                    cmd.extend(["-c:a", "pcm_s16le"])
+                cmd.append(final_file)
+
+                res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                if res.returncode != 0 or not os.path.exists(final_file):
+                    if target_ext == "mp3" and os.path.exists(raw_audio_file) and raw_audio_file.endswith(".mp3"):
+                        shutil.copy2(raw_audio_file, final_file)
+                    else:
+                        raise Exception(f"Lỗi chuyển đổi âm thanh FFmpeg: {res.stderr.decode('utf-8', errors='ignore')[:200]}")
+
+                # Cover Art & Metadata
+                JOBS[job_id]["status"] = "Đang gắn nhãn bản quyền & ảnh bìa TikTok..."
+                JOBS[job_id]["percent"] = 95
+
+                cover_bytes = None
+                if tt_info.get("thumbnail"):
+                    try:
+                        c_resp = requests.get(tt_info["thumbnail"], headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+                        if c_resp.status_code == 200:
+                            cover_bytes = c_resp.content
+                    except Exception as ce:
+                        print(f"[!] TikTok cover fetch error: {ce}")
+
+                if target_ext == "mp3":
+                    try:
+                        audio = ID3(final_file)
+                    except:
+                        audio = ID3()
+                    audio.add(TIT2(encoding=3, text=title))
+                    audio.add(TPE1(encoding=3, text=author))
+                    audio.add(TALB(encoding=3, text="TikTok Audio"))
+                    if cover_bytes:
+                        audio.add(APIC(
+                            encoding=3,
+                            mime='image/jpeg',
+                            type=3,
+                            desc='Cover',
+                            data=cover_bytes
+                        ))
+                    audio.save(final_file, v2_version=3)
+                elif target_ext == "flac":
+                    try:
+                        audio = FLAC(final_file)
+                        audio["title"] = title
+                        audio["artist"] = author
+                        audio["album"] = "TikTok Audio"
+                        if cover_bytes:
+                            pic = Picture()
+                            pic.type = 3
+                            pic.mime = 'image/jpeg'
+                            pic.desc = 'Front Cover'
+                            pic.data = cover_bytes
+                            audio.add_picture(pic)
+                        audio.save()
+                    except Exception as fe:
+                        print(f"[!] TikTok FLAC tag error: {fe}")
+                elif target_ext == "m4a":
+                    try:
+                        audio = MP4(final_file)
+                        audio["\xa9nam"] = title
+                        audio["\xa9ART"] = author
+                        audio["\xa9alb"] = "TikTok Audio"
+                        if cover_bytes:
+                            audio["covr"] = [MP4Cover(cover_bytes, imageformat=MP4Cover.FORMAT_JPEG)]
+                        audio.save()
+                    except Exception as me:
+                        print(f"[!] TikTok M4A tag error: {me}")
+
+                JOBS[job_id].update({
+                    "percent": 100,
+                    "finished": True,
+                    "status": "Hoàn tất! Đã trích xuất âm thanh chất lượng cao.",
+                    "filename": os.path.basename(final_file),
+                    "filepath": final_file,
+                    "download_url": f"/api/file/{job_id}"
+                })
+                return
+
         # CASE 2: YOUTUBE DOWNLOAD (VIDEO OR AUDIO)
         elif platform == "youtube":
             out_template = os.path.join(job_folder, "QuocTinMedia - %(title)s.%(ext)s")
@@ -2073,6 +2418,8 @@ def download_thumbnail_file():
         headers["Referer"] = "https://www.nhaccuatui.com/"
     elif any(d in img_url for d in ["zadn.vn", "zmdcdn.me", "zingmp3"]):
         headers["Referer"] = "https://zingmp3.vn/"
+    elif any(d in img_url for d in ["tiktokcdn.com", "byteoversea.com", "ibytedtos.com", "tikwm.com"]):
+        headers["Referer"] = "https://www.tiktok.com/"
 
     try:
         resp = requests.get(img_url, headers=headers, timeout=15)

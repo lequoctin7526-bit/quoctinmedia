@@ -121,7 +121,11 @@ document.addEventListener('DOMContentLoaded', () => {
       inputWrap.setAttribute('data-platform', currentPlatform);
     }
 
-    if (currentPlatform === 'spotify') {
+    if (currentPlatform === 'tiktok') {
+      urlInput.placeholder = 'Dán link TikTok (Video không logo, Âm thanh)...';
+      inputIcon.className = 'fa-brands fa-tiktok';
+      inputIcon.style.color = '#25f4ee';
+    } else if (currentPlatform === 'spotify') {
       urlInput.placeholder = 'Dán link Spotify (Bài hát, Album, hoặc Playlist)...';
       inputIcon.className = 'fa-brands fa-spotify';
       inputIcon.style.color = '#1ed760';
@@ -161,7 +165,13 @@ document.addEventListener('DOMContentLoaded', () => {
   urlInput.addEventListener('input', () => {
     toggleClearBtn();
     const val = urlInput.value.trim().toLowerCase();
-    if (val.includes('youtube.com') || val.includes('youtu.be')) {
+    if (val.includes('tiktok.com') || val.includes('douyin.com')) {
+      inputIcon.className = 'fa-brands fa-tiktok';
+      inputIcon.style.color = '#25f4ee';
+      currentPlatform = 'tiktok';
+      tabBtns.forEach(b => b.classList.toggle('active', b.dataset.platform === 'tiktok'));
+      updateInputPlaceholder();
+    } else if (val.includes('youtube.com') || val.includes('youtu.be')) {
       inputIcon.className = 'fa-brands fa-youtube';
       inputIcon.style.color = '#ff334b';
       currentPlatform = 'youtube';
@@ -329,10 +339,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     currentAudioQuality === 'master' ? 'WAV Master' : '256kbps';
       downloadBtnText.textContent = `Tải Âm thanh (${currentAudioFormat.toUpperCase()} - ${qText})`;
     } else if (currentMode === 'video') {
-      const vText = currentVideoQuality === '2160' ? '4K 2160p' :
-                    currentVideoQuality === '1440' ? '2K 1440p' :
-                    currentVideoQuality === '1080' ? 'Full HD 1080p' : '720p HD';
-      downloadBtnText.textContent = `Tải Video (${vText} MP4)`;
+      if (currentMediaData && currentMediaData.platform === 'tiktok') {
+        downloadBtnText.textContent = 'Tải Video TikTok Không Logo (MP4 HD)';
+      } else {
+        const vText = currentVideoQuality === '2160' ? '4K 2160p' :
+                      currentVideoQuality === '1440' ? '2K 1440p' :
+                      currentVideoQuality === '1080' ? 'Full HD 1080p' : '720p HD';
+        downloadBtnText.textContent = `Tải Video (${vText} MP4)`;
+      }
     } else if (currentMode === 'thumbnail') {
       const tText = currentThumbFormat === 'jpg' ? 'JPG Ultra HD' :
                     currentThumbFormat === 'png' ? 'PNG Lossless' : 'File ảnh gốc từ Server';
@@ -457,7 +471,13 @@ document.addEventListener('DOMContentLoaded', () => {
       mediaExtra.classList.add('hidden');
     }
 
-    if (data.platform === 'youtube') {
+    if (data.platform === 'tiktok') {
+      mediaPlatformBadge.className = 'platform-indicator tiktok';
+      mediaPlatformBadge.innerHTML = '<i class="fa-brands fa-tiktok"></i>';
+      mediaTypeTag.textContent = 'TikTok Video (Không Logo)';
+      mediaAuthor.querySelector('span').textContent = data.author || 'TikTok Creator';
+      if (videoModeBtn) videoModeBtn.style.display = 'flex';
+    } else if (data.platform === 'youtube') {
       mediaPlatformBadge.className = 'platform-indicator youtube';
       mediaPlatformBadge.innerHTML = '<i class="fa-brands fa-youtube"></i>';
       mediaTypeTag.textContent = data.is_playlist ? 'YouTube Playlist' : (data.is_short ? 'YouTube Short' : 'YouTube Video');
