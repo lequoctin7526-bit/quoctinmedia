@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quốc Tín Media Downloader - YouTube & Spotify High Quality</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body>
+  <div class="ambient-glow glow-1"></div>
+  <div class="ambient-glow glow-2"></div>
+  <div class="ambient-glow glow-3"></div>
+
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon">
+          <i class="fa-solid fa-bolt"></i>
+          <span class="brand-pulse"></span>
+        </div>
+        <div class="brand-text">
+          <div class="brand-title-row">
+            <h1>Quốc Tín Media <span class="gradient-text">Pro</span></h1>
+            <!-- <span class="version-tag"><i class="fa-solid fa-wand-magic-sparkles"></i> v3.0 Ultra HD</span> -->
+          </div>
+          <p>Tải Video & Âm thanh chất lượng cao chuẩn Studio &bull; Hỗ trợ 5 nền tảng hàng đầu</p>
+        </div>
+      </div>
+      <div class="header-badges">
+        <span class="badge badge-yt"><i class="fa-brands fa-youtube"></i> YouTube 4K</span>
+        <span class="badge badge-sp"><i class="fa-brands fa-spotify"></i> Spotify 320k</span>
+        <span class="badge badge-sc"><i class="fa-brands fa-soundcloud"></i> SoundCloud HQ</span>
+        <span class="badge badge-zing"><i class="fa-solid fa-compact-disc"></i> Zing MP3 320k</span>
+        <span class="badge badge-nct"><i class="fa-solid fa-cloud-arrow-down"></i> NhacCuaTui HD</span>
+        <!-- <button id="cookieSettingsBtn" class="cookie-nav-btn" type="button" title="Quản lý Cookie YouTube">
+          <i class="fa-solid fa-cookie-bite"></i> <span>Cookie YouTube</span>
+          <span id="cookieBadgeDot" class="cookie-badge-dot"></span>
+        </button> -->
+      </div>
+    </header>
+
+    <!-- Main Card -->
+    <main class="main-card">
+      <!-- Platform Selector Tabs -->
+      <div class="platform-tabs">
+        <button class="tab-btn active" data-platform="youtube">
+          <i class="fa-brands fa-youtube" style="color: #ff334b;"></i>
+          <span>YouTube</span>
+        </button>
+        <button class="tab-btn" data-platform="spotify">
+          <i class="fa-brands fa-spotify" style="color: #1ed760;"></i>
+          <span>Spotify</span>
+        </button>
+        <button class="tab-btn" data-platform="soundcloud" id="soundcloudTabBtn">
+          <i class="fa-brands fa-soundcloud" style="color: #ff5500;"></i>
+          <span>SoundCloud</span>
+        </button>
+        <button class="tab-btn" data-platform="zingmp3" id="zingmp3TabBtn">
+          <i class="fa-solid fa-compact-disc" style="color: #a855f7;"></i>
+          <span>Zing MP3</span>
+        </button>
+        <button class="tab-btn" data-platform="nhaccuatui" id="nhaccuatuiTabBtn">
+          <i class="fa-solid fa-cloud-arrow-down" style="color: #00bcd4;"></i>
+          <span>NhacCuaTui</span>
+        </button>
+      </div>
+
+      <!-- URL Input Form (Active for URL modes) -->
+      <form id="urlForm" class="input-section">
+        <div class="input-wrapper">
+          <div class="input-icon">
+            <i class="fa-brands fa-youtube" id="inputIcon" style="color: #ff334b;"></i>
+          </div>
+          <input 
+            type="text" 
+            id="urlInput" 
+            placeholder="Dán link YouTube (Video, Short, hoặc Playlist)..." 
+            autocomplete="off"
+            spellcheck="false"
+            required
+          />
+          <button type="button" id="clearBtn" class="clear-btn hidden" title="Xóa liên kết" aria-label="Xóa liên kết">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+          <button type="button" id="pasteBtn" class="action-btn" title="Dán từ Clipboard">
+            <i class="fa-regular fa-paste"></i>
+            <span>Dán</span>
+          </button>
+          <button type="submit" id="fetchBtn" class="primary-btn">
+            <span class="btn-text">Kiểm tra</span>
+            <i class="fa-solid fa-arrow-right btn-icon"></i>
+            <span class="btn-spinner hidden"><i class="fa-solid fa-circle-notch fa-spin"></i></span>
+          </button>
+        </div>
+        <div class="quick-chips">
+          <span class="chip-label">Ví dụ mẫu:</span>
+          <button type="button" class="sample-chip" data-sample="https://www.youtube.com/watch?v=CgJSDXTS6ws">
+            <i class="fa-brands fa-youtube" style="color: #ff334b;"></i> YouTube
+          </button>
+          <button type="button" class="sample-chip" data-sample="https://open.spotify.com/intl-vi/track/77xxMiL9cBw92j9LRv3gl3?si=743e5501b4874c08">
+            <i class="fa-brands fa-spotify" style="color: #1ed760;"></i> Spotify
+          </button>
+          <button type="button" class="sample-chip" data-sample="https://soundcloud.com/martingarrix/martin-garrix-animals-original">
+            <i class="fa-brands fa-soundcloud" style="color: #ff5500;"></i> SoundCloud
+          </button>
+          <button type="button" class="sample-chip" data-sample="https://zingmp3.vn/bai-hat/Duong-Toi-Cho-Em-Ve-buitruonglinh/ZWDC7O8E.html">
+            <i class="fa-solid fa-compact-disc" style="color: #a855f7;"></i> Zing MP3
+          </button>
+          <button type="button" class="sample-chip" data-sample="https://www.nhaccuatui.com/bai-hat/fly-away-thefatrat-ft-anjulie.HUrRmiQuz1P7.html">
+            <i class="fa-solid fa-cloud-arrow-down" style="color: #00bcd4;"></i> NhacCuaTui
+          </button>
+        </div>
+      </form>
+
+      <!-- Status / Notification Alert -->
+      <div id="statusAlert" class="status-alert hidden">
+        <div class="alert-icon"><i class="fa-solid fa-circle-info"></i></div>
+        <div class="alert-message" id="alertMessage">Thông báo</div>
+        <button type="button" class="alert-close" id="alertClose"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      <!-- Result Container (Hidden until fetch) -->
+      <div id="resultContainer" class="result-container hidden">
+        <!-- Media Meta Card -->
+        <div class="media-card">
+          <div class="media-thumbnail-wrapper">
+            <img id="mediaThumbnail" src="" alt="Thumbnail" />
+            <span id="mediaDuration" class="media-duration">00:00</span>
+            <div id="mediaPlatformBadge" class="platform-indicator">
+              <i class="fa-brands fa-youtube"></i>
+            </div>
+            <button type="button" class="thumb-quick-download" id="thumbQuickBtn" title="Tải nhanh ảnh bìa HD này">
+              <i class="fa-solid fa-arrow-down-to-bracket"></i>
+              <span>Tải ảnh bìa</span>
+            </button>
+          </div>
+          <div class="media-details">
+            <div class="media-type-tag" id="mediaTypeTag">Single Track</div>
+            <h2 id="mediaTitle" class="media-title">Tên video / bài hát</h2>
+            <div class="media-meta-row">
+              <span class="meta-item" id="mediaAuthor"><i class="fa-solid fa-user"></i> <span>Nghệ sĩ</span></span>
+              <span class="meta-item" id="mediaExtra"><i class="fa-solid fa-eye"></i> <span>Lượt xem</span></span>
+            </div>
+
+            <!-- Audio Master Quality Highlight -->
+            <div class="audio-highlight-badge">
+              <div class="highlight-icon"><i class="fa-solid fa-award"></i></div>
+              <div class="highlight-content">
+                <strong>Chế độ âm thanh cao cấp nhất:</strong>
+                <span>Chất lượng gốc 320kbps / Opus / FLAC không nén.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Download Options Box -->
+        <div class="options-box">
+          <div class="options-header">
+            <h3><i class="fa-solid fa-sliders"></i> Tùy chọn định dạng tải về</h3>
+            <div class="format-mode-toggle">
+              <button class="mode-btn active" data-mode="audio">
+                <i class="fa-solid fa-music"></i> Âm thanh (Audio)
+              </button>
+              <button class="mode-btn" data-mode="video" id="videoModeBtn">
+                <i class="fa-solid fa-film"></i> Video MP4
+              </button>
+              <button class="mode-btn" data-mode="thumbnail" id="thumbnailModeBtn">
+                <i class="fa-regular fa-image"></i> Ảnh bìa (Thumbnail)
+              </button>
+            </div>
+          </div>
+
+          <!-- Audio Options Panel -->
+          <div id="audioOptionsPanel" class="options-panel">
+            <label class="section-label">Chọn chất lượng âm thanh:</label>
+            <div class="quality-grid" id="audioQualityGrid">
+              <!-- MP3 320kbps (Recommended) -->
+              <div class="quality-card active" data-format="mp3" data-quality="320">
+                <div class="card-radio"><i class="fa-solid fa-circle-check"></i></div>
+                <div class="card-info">
+                  <div class="card-title-row">
+                    <span class="card-name">MP3</span>
+                    <span class="card-badge gold">Tốt nhất (320 kbps)</span>
+                  </div>
+                  <p class="card-desc">Âm thanh chuẩn Studio, tương thích 100% mọi thiết bị, kèm ảnh bìa & tag bài hát.</p>
+                </div>
+              </div>
+
+              <!-- FLAC Lossless -->
+              <div class="quality-card" data-format="flac" data-quality="lossless">
+                <div class="card-radio"><i class="fa-regular fa-circle"></i></div>
+                <div class="card-info">
+                  <div class="card-title-row">
+                    <span class="card-name">FLAC</span>
+                    <span class="card-badge purple">Lossless 24-bit</span>
+                  </div>
+                  <p class="card-desc">Chất lượng bảo toàn nguyên bản, giữ trọn vẹn dải tần số âm thanh.</p>
+                </div>
+              </div>
+
+              <!-- Original Best (Opus/AAC) -->
+              <div class="quality-card" data-format="original" data-quality="best">
+                <div class="card-radio"><i class="fa-regular fa-circle"></i></div>
+                <div class="card-info">
+                  <div class="card-title-row">
+                    <span class="card-name">Original Audio (Opus/AAC)</span>
+                    <span class="card-badge blue">Gốc từ Server</span>
+                  </div>
+                  <p class="card-desc">Trích xuất trực tiếp luồng audio cao nhất từ server, không qua tái nén (Zero Re-encoding).</p>
+                </div>
+              </div>
+
+              <!-- M4A AAC -->
+              <div class="quality-card" data-format="m4a" data-quality="256">
+                <div class="card-radio"><i class="fa-regular fa-circle"></i></div>
+                <div class="card-info">
+                  <div class="card-title-row">
+                    <span class="card-name">M4A (Apple AAC)</span>
+                    <span class="card-badge green">256 kbps</span>
+                  </div>
+                  <p class="card-desc">Tối ưu hoàn hảo cho iPhone, iPad, Mac và các thiết bị Apple.</p>
+                </div>
+              </div>
+
+              <!-- WAV Master -->
+              <div class="quality-card" data-format="wav" data-quality="master">
+                <div class="card-radio"><i class="fa-regular fa-circle"></i></div>
+                <div class="card-info">
+                  <div class="card-title-row">
+                    <span class="card-name">WAV Uncompressed</span>
+                    <span class="card-badge gray">PCM 1411 kbps</span>
+                  </div>
+                  <p class="card-desc">Âm thanh thô không nén, phù hợp dựng phim, DJ, chỉnh sửa âm nhạc.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Video Options Panel -->
+          <div id="videoOptionsPanel" class="options-panel hidden">
+            <label class="section-label">Chọn độ phân giải video:</label>
+            <div class="quality-grid" id="videoQualityGrid">
+              <!-- 4K -->
+              <div class="quality-card" data-format="mp4" data-quality="2160">
+                <div class="card-radio"><i class="fa-regular fa-circle"></i></div>
+                <div class="card-info">
+                  <div class="card-title-row">
+                    <span class="card-name">4K Ultra HD</span>
+                    <span class="card-badge red">2160p (60fps)</span>
+                  </div>
+                  <p class="card-desc">Độ sắc nét đỉnh cao nhất, âm thanh hòa trộn chất lượng cao.</p>
+                </div>
+              </div>
+
+              <!-- 2K -->
+              <div class="quality-card" data-format="mp4" data-quality="1440">
+                <div class="card-radio"><i class="fa-regular fa-circle"></i></div>
+                <div class="card-info">
+                  <div class="card-title-row">
+                    <span class="card-name">2K Quad HD</span>
+                    <span class="card-badge orange">1440p</span>
+                  </div>
+                  <p class="card-desc">Độ chi tiết cao cho màn hình máy tính 2K.</p>
+                </div>
+              </div>
+
+              <!-- 1080p FHD (Active Default) -->
+              <div class="quality-card active" data-format="mp4" data-quality="1080">
+                <div class="card-radio"><i class="fa-solid fa-circle-check"></i></div>
+                <div class="card-info">
+                  <div class="card-title-row">
+                    <span class="card-name">Full HD</span>
+                    <span class="card-badge blue">1080p (Khuyên dùng)</span>
+                  </div>
+                  <p class="card-desc">Độ phân giải chuẩn nét, cân bằng dung lượng và tốc độ tải.</p>
+                </div>
+              </div>
+
+              <!-- 720p HD -->
+              <div class="quality-card" data-format="mp4" data-quality="720">
+                <div class="card-radio"><i class="fa-regular fa-circle"></i></div>
+                <div class="card-info">
+                  <div class="card-title-row">
+                    <span class="card-name">HD</span>
+                    <span class="card-badge gray">720p</span>
+                  </div>
+                  <p class="card-desc">Tải nhanh, thích hợp cho điện thoại và đường truyền mạng vừa phải.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Playlist Items (if playlist) -->
+          <div id="playlistSection" class="playlist-section hidden">
+            <div class="playlist-header">
+              <div class="playlist-title-wrap">
+                <i class="fa-solid fa-list-check"></i>
+                <span class="playlist-count">Danh sách bài hát (<span id="playlistTotal">0</span>)</span>
+              </div>
+              <div class="playlist-controls">
+                <button type="button" id="selectAllTracksBtn" class="pill-btn">Chọn tất cả</button>
+                <button type="button" id="deselectAllTracksBtn" class="pill-btn">Bỏ chọn</button>
+              </div>
+            </div>
+            <div class="playlist-items" id="playlistItems">
+              <!-- Injected by JS -->
+            </div>
+          </div>
+
+          <!-- Action Download Button -->
+          <div class="action-footer">
+            <button id="downloadBtn" class="download-trigger-btn">
+              <i class="fa-solid fa-cloud-arrow-down"></i>
+              <span id="downloadBtnText">Bắt đầu tải (MP3 320kbps)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Download Progress Section -->
+      <div id="progressBox" class="progress-box hidden">
+        <div class="progress-header">
+          <div class="progress-status" id="progressStatus">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span>Đang xử lý âm thanh chất lượng cao...</span>
+          </div>
+          <span class="progress-percent" id="progressPercent">0%</span>
+        </div>
+        <div class="progress-bar-container">
+          <div class="progress-bar-fill" id="progressBarFill"></div>
+        </div>
+        <div class="progress-meta">
+          <span id="progressSpeed"><i class="fa-solid fa-gauge-high"></i> Đang tính toán</span>
+          <span id="progressETA"><i class="fa-regular fa-clock"></i> Ước tính...</span>
+        </div>
+        <div class="progress-actions">
+          <a id="fileDownloadLink" class="direct-download-link hidden" href="#" download>
+            <i class="fa-solid fa-circle-down"></i> Bấm vào đây nếu file chưa tự động lưu
+          </a>
+        </div>
+      </div>
+
+      <!-- Feature Highlight Grid -->
+      <section class="features-section">
+        <h3 class="features-title">
+          <i class="fa-solid fa-gem" style="color: #f59e0b; margin-right: 8px;"></i>
+          Công nghệ tải nhạc & video chất lượng cao vượt trội
+        </h3>
+        <div class="feature-cards">
+          <div class="feature-card">
+            <div class="f-icon f-icon-audio"><i class="fa-solid fa-sliders"></i></div>
+            <h4>True 320 kbps & Lossless FLAC</h4>
+            <p>Trích xuất luồng âm thanh gốc cao nhất, mã hóa chuẩn CBR 320kbps qua FFmpeg độc quyền, không làm méo âm hay cắt dải treble.</p>
+          </div>
+          <div class="feature-card">
+            <div class="f-icon f-icon-spotify"><i class="fa-brands fa-spotify"></i></div>
+            <h4>Spotify Studio ID3 Tags</h4>
+            <p>Tự động đối soát bản thu phòng thu chính gốc, nhúng ảnh bìa HD sắc nét, tên ca sĩ, Album và năm phát hành trực tiếp vào file.</p>
+          </div>
+          <div class="feature-card">
+            <div class="f-icon f-icon-zing"><i class="fa-solid fa-compact-disc"></i></div>
+            <h4>Zing MP3 & NhacCuaTui HD</h4>
+            <p>Hỗ trợ đầy đủ kho nhạc Việt Nam, tải trực tiếp luồng 320kbps Lossless CDN và ảnh bìa chất lượng cao 600x600.</p>
+          </div>
+          <div class="feature-card">
+            <div class="f-icon f-icon-video"><i class="fa-solid fa-film"></i></div>
+            <h4>YouTube 4K & SoundCloud Sets</h4>
+            <p>Tải video YouTube lên đến 2160p 60fps kèm âm thanh vòm, hoặc tải trọn bộ Playlist SoundCloud thành file ZIP nhanh gọn.</p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Quốc Tín Media Pro &bull; Công cụ tải nhạc & video cá nhân &bull; Hỗ trợ YouTube, Spotify, SoundCloud, Zing MP3 & NhacCuaTui</p>
+      <a href="https://www.facebook.com/quctinne" target="_blank" rel="noopener noreferrer" class="footer-fb-link">
+        <i class="fa-brands fa-facebook"></i>
+        <span>Facebook: Quốc Tín (quctinne)</span>
+      </a>
+      <div class="backend-status" id="backendStatus">
+        <span class="status-dot online"></span>
+        <span id="serverStatusText">Máy chủ: Hoạt động</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Cookie Settings Modal -->
+  <div id="cookieModal" class="modal-backdrop hidden">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title">
+          <i class="fa-solid fa-cookie-bite modal-icon"></i>
+          <div>
+            <h3>Quản lý Cookie YouTube</h3>
+            <p>Khắc phục triệt để lỗi "Sign in to confirm you're not a bot"</p>
+          </div>
+        </div>
+        <button id="closeCookieModalBtn" class="modal-close-btn" type="button">&times;</button>
+      </div>
+      
+      <div class="modal-body">
+        <div class="cookie-status-card" id="cookieStatusCard">
+          <div class="status-indicator">
+            <span class="status-dot green" id="cookieModalStatusDot"></span>
+            <div>
+              <strong id="cookieStatusTitle">Đang tự động chống Bot (web_embedded + mobile)</strong>
+              <p id="cookieStatusDesc">Hệ thống đang tự động tối ưu hóa client để tải video YouTube không cần đăng nhập.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="cookie-action-box">
+          <h4><i class="fa-solid fa-file-arrow-up"></i> Nạp file cookies.txt</h4>
+          <p class="cookie-hint">Nếu YouTube chặn IP hoặc yêu cầu đăng nhập đối với một số video nhất định, hãy xuất file cookies.txt từ trình duyệt của bạn và tải lên đây:</p>
+          
+          <div class="upload-dropzone" id="cookieDropzone">
+            <i class="fa-solid fa-cloud-arrow-up drop-icon"></i>
+            <p>Kéo & thả file <b>cookies.txt</b> vào đây hoặc <span class="drop-browse">chọn file</span></p>
+            <input type="file" id="cookieFileInput" accept=".txt" class="hidden-input">
+          </div>
+
+          <details class="cookie-guide-accordion">
+            <summary><i class="fa-solid fa-circle-question"></i> Hướng dẫn lấy file cookies.txt trong 1 phút</summary>
+            <div class="guide-steps">
+              <ol>
+                <li>Cài đặt tiện ích mở rộng <b>Get cookies.txt LOCALLY</b> (hoặc <b>Cookie-Editor</b>) trên Chrome, Cốc Cốc hoặc Edge.</li>
+                <li>Mở trang web <b>youtube.com</b> (đã đăng nhập tài khoản bất kỳ của bạn).</li>
+                <li>Nhấp vào biểu tượng tiện ích &rarr; chọn <b>Export as cookies.txt</b> và tải file lên đây.</li>
+              </ol>
+            </div>
+          </details>
+
+          <div class="cookie-manual-input">
+            <label for="cookieTextarea"><i class="fa-solid fa-code"></i> Hoặc dán trực tiếp nội dung cookie:</label>
+            <textarea id="cookieTextarea" placeholder="# Netscape HTTP Cookie File&#10;.youtube.com	TRUE	/	TRUE..."></textarea>
+            <div class="cookie-input-actions">
+              <button id="saveCookieTextBtn" class="btn-save-cookie" type="button"><i class="fa-solid fa-check"></i> Lưu Cookie</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer">
+        <button id="deleteCookieBtn" class="btn-delete-cookie hidden" type="button"><i class="fa-solid fa-trash-can"></i> Xóa Cookie</button>
+        <button id="closeCookieModalBtn2" class="btn-close-modal" type="button">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="js/script.js"></script>
+</body>
+</html>
