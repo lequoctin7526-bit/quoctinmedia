@@ -1160,38 +1160,30 @@ def index():
 def debug_test():
     target = request.args.get("v", "CgJSDXTS6ws")
     test_url = f"https://www.youtube.com/watch?v={target}"
-    results = {}
     
-    test_configs = [
-        ("android_no_cookie", ["android"], False),
-        ("mweb_no_cookie", ["mweb"], False),
-        ("web_no_cookie", ["web"], False),
-        ("tv_no_cookie", ["tv_embedded"], False),
-        ("web_with_cookie", ["web"], True),
-        ("android_with_cookie", ["android"], True),
-    ]
-    
-    for name, clients, use_cookie in test_configs:
-        opts = {
-            "format": "bestaudio/best/18/b",
-            "simulate": True,
-            "quiet": True,
-            "no_warnings": True,
-            "extractor_args": {"youtube": {"player_client": clients, "player_skip": ["configs"]}}
-        }
-        if use_cookie:
-            c = get_cookie_file()
-            if c:
-                opts["cookiefile"] = c
-        try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(test_url, download=False)
-                fmts = [f.get("format_id") for f in info.get("formats", []) if f.get("url")]
-                results[name] = {"success": True, "direct_urls": len(fmts)}
-        except Exception as e:
-            results[name] = {"success": False, "error": str(e)}
-
-    return jsonify(results)
+    # Test formats with web + cookie
+    c = get_cookie_file()
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "ignore_no_formats_error": True
+    }
+    if c:
+        opts["cookiefile"] = c
+        
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(test_url, download=False)
+            formats = info.get("formats", [])
+            fmt_list = [{"id": f.get("format_id"), "ext": f.get("ext"), "vcodec": f.get("vcodec"), "acodec": f.get("acodec"), "abr": f.get("abr"), "has_url": bool(f.get("url"))} for f in formats]
+            return jsonify({
+                "title": info.get("title"),
+                "total_formats": len(formats),
+                "formats": fmt_list
+            })
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 @app.route("/api/health")
 def health():
